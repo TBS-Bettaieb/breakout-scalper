@@ -1,0 +1,207 @@
+//+------------------------------------------------------------------+
+//|                                    [NOM_DU_CLONE].mq5            |
+//|                          [DESCRIPTION DU CLONE]                  |
+//|                                                     Version 3.00 |
+//+------------------------------------------------------------------+
+#property link      "https://www.mql5.com"
+#property version   "3.00"
+#property strict
+
+//═══════════════════════════════════════════════════════════════════
+//   ████████╗ CONFIG BLOCK - PERSONNALISEZ ICI ████████╗
+//═══════════════════════════════════════════════════════════════════
+
+// 🎯 IDENTITÉ DE LA STRATÉGIE
+#define STRATEGY_NAME          "Nom de Votre Stratégie"
+#define STRATEGY_COMMENT       "Mon Commentaire"
+#define BASE_MAGIC_NUMBER      299999  // ⚠️ DOIT ÊTRE UNIQUE!
+
+// 📊 CONFIGURATION DES SYMBOLES
+// Exemples:
+// - Majors:      "EURUSD,GBPUSD,USDJPY"
+// - JPY Pairs:   "USDJPY,EURJPY,CHFJPY"
+// - Commodities: "AUDUSD,NZDUSD,USDCAD"
+// - Crosses:     "EURGBP,EURJPY,GBPJPY"
+#define DEFAULT_SYMBOLS        "EURUSD,GBPUSD"
+#define USE_ALL_MARKET_WATCH   false
+#define TRADING_TIMEFRAME      PERIOD_M5
+
+// 💰 GESTION DU RISQUE
+// Recommandations:
+// - Majors:      4-5%
+// - JPY Pairs:   2-3%
+// - Exotics:     1-2%
+#define RISK_PERCENT           4.0
+
+// 🎯 TAKE PROFIT / STOP LOSS (en points, 10 points = 1 pip)
+// Recommandations selon volatilité:
+// - Low volatility:    150-200 points (15-20 pips)
+// - Medium volatility: 200-300 points (20-30 pips)
+// - High volatility:   300-400 points (30-40 pips)
+#define TAKE_PROFIT_POINTS     200
+#define STOP_LOSS_POINTS       200
+
+// 📉 TRAILING STOP LOSS
+// TSL_TRIGGER: profit requis avant activation
+// TSL_POINTS: distance du trailing SL
+#define TSL_TRIGGER_POINTS     10
+#define TSL_POINTS             10
+
+// ⏰ HEURES DE TRADING (0 = inactif, 1-23 = actif)
+// Sessions forex:
+// - Tokyo:        0-9 (heure serveur)
+// - London:       8-17
+// - New York:     13-22
+// - Overlap:      13-17 (London + NY = haute volatilité)
+#define START_HOUR             7
+#define END_HOUR               19
+
+// 📈 PARAMÈTRES DE STRATÉGIE
+// STRATEGY_BREAKOUT:  Trade les cassures (trending markets)
+// STRATEGY_REVERSION: Trade le retour à la moyenne (ranging markets)
+#define STRATEGY_TYPE          STRATEGY_BREAKOUT
+
+// BARS_ANALYSIS: Nombre de barres pour détecter swing points
+// - Majors rapides:  5-7 barres
+// - Pairs lentes:    7-10 barres
+#define BARS_ANALYSIS          5
+
+// EXPIRATION_BARS: Durée de vie max d'un ordre pending
+#define EXPIRATION_BARS        50
+
+// ORDER_DISTANCE: Distance minimale entre ordres (évite surtrading)
+#define ORDER_DISTANCE_POINTS  100
+
+// 🎯 TRAILING TAKE PROFIT
+// Modes disponibles:
+// - TRAILING_TP_STEPPED: Niveaux automatiques (25%, 50%, 75%, 100%)
+// - TRAILING_TP_CUSTOM:  Niveaux personnalisés (voir ci-dessous)
+#define USE_TRAILING_TP        true
+#define TRAILING_TP_MODE       TRAILING_TP_STEPPED
+
+// Format CUSTOM: "profitPct:slMovePts:tpExtendPts, ..."
+// Exemple: "50:0:0, 75:25:50, 100:50:100"
+// Signification:
+// - À 50% du TP: ne rien bouger (sécurise position)
+// - À 75% du TP: avancer SL de 25 pts, étendre TP de 50 pts
+// - À 100% du TP: avancer SL de 50 pts, étendre TP de 100 pts
+#define CUSTOM_TP_LEVELS       "25:0:0, 50:25:25, 75:40:50, 100:60:100"
+
+// 🚨 MESSAGES D'ALERTE
+#define HOUR_BLOCK_MSG         "⏰ TRADING PAUSED - Outside Trading Hours"
+#define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
+#define BOTH_BLOCK_MSG         "🚫 TRADING PAUSED - Outside Trading Schedule"
+
+//═══════════════════════════════════════════════════════════════════
+//   ████████╗ FIN DU CONFIG BLOCK - NE PAS MODIFIER CI-DESSOUS ████
+//═══════════════════════════════════════════════════════════════════
+
+// Include bot engine
+#include "core/ForexScalperBot.mqh"
+
+// Global bot instance
+ForexScalperBot* bot = NULL;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   // Create configuration from defines
+   BotConfig config;
+   config.strategyName = STRATEGY_NAME;
+   config.strategyComment = STRATEGY_COMMENT;
+   config.baseMagic = BASE_MAGIC_NUMBER;
+   config.symbolsList = DEFAULT_SYMBOLS;
+   config.useAllSymbols = USE_ALL_MARKET_WATCH;
+   config.timeframe = TRADING_TIMEFRAME;
+   config.riskPercent = RISK_PERCENT;
+   config.tpPoints = TAKE_PROFIT_POINTS;
+   config.slPoints = STOP_LOSS_POINTS;
+   config.tslTriggerPoints = TSL_TRIGGER_POINTS;
+   config.tslPoints = TSL_POINTS;
+   config.startHour = START_HOUR;
+   config.endHour = END_HOUR;
+   config.strategyMode = STRATEGY_TYPE;
+   config.barsN = BARS_ANALYSIS;
+   config.expirationBars = EXPIRATION_BARS;
+   config.orderDistPoints = ORDER_DISTANCE_POINTS;
+   config.useTrailingTP = USE_TRAILING_TP;
+   config.trailingTPMode = TRAILING_TP_MODE;
+   config.customTPLevels = CUSTOM_TP_LEVELS;
+   config.hourBlockMsg = HOUR_BLOCK_MSG;
+   config.dayBlockMsg = DAY_BLOCK_MSG;
+   config.bothBlockMsg = BOTH_BLOCK_MSG;
+   
+   // Initialize bot
+   bot = new ForexScalperBot(config);
+   if(bot == NULL)
+   {
+      Print("❌ ERROR: Failed to create bot instance");
+      return(INIT_FAILED);
+   }
+   
+   if(!bot.Initialize())
+   {
+      Print("❌ ERROR: Bot initialization failed");
+      delete bot;
+      bot = NULL;
+      return(INIT_FAILED);
+   }
+   
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   if(bot != NULL)
+   {
+      bot.Deinitialize(reason);
+      delete bot;
+      bot = NULL;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   if(bot != NULL)
+   {
+      bot.OnTick();
+   }
+}
+
+//+------------------------------------------------------------------+
+// 📝 NOTES RAPIDES POUR PERSONNALISATION:
+//
+// 1. CHANGER LE NOM DU FICHIER:
+//    - Utiliser un nom descriptif: E_G_USDScalper.mq5
+//    - Éviter les noms génériques: Scalper2.mq5
+//
+// 2. MAGIC NUMBER UNIQUE:
+//    - Utiliser une plage: 298000-299999
+//    - Documenter quelque part: quel magic = quel bot
+//
+// 3. OPTIMISATION PAR PAIRE:
+//    - Backtester chaque combinaison de symboles
+//    - Ajuster TP/SL selon la volatilité
+//    - Tester différentes sessions horaires
+//
+// 4. STRATÉGIE BREAKOUT vs REVERSION:
+//    - BREAKOUT: Marchés trending (forte volatilité)
+//    - REVERSION: Marchés ranging (basse volatilité)
+//
+// 5. TRAILING TP RECOMMANDÉ:
+//    - STEPPED: Simple et efficace (défaut)
+//    - CUSTOM: Pour stratégies avancées
+//
+// 6. FICHIERS À DUPLIQUER POUR CRÉER VARIANTES:
+//    - Ce template → renommer → modifier CONFIG
+//    - core/ForexScalperBot.mqh reste inchangé!
+//
+//+------------------------------------------------------------------+
