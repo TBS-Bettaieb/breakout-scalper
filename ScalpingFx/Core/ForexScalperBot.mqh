@@ -322,7 +322,6 @@ private:
             m_config.slippagePoints,        // NEW
             m_config.entryOffsetPoints,     // NEW
             m_config.strategyComment,
-            m_config.strategyMode,
             m_config.useTrailingTP,
             m_config.trailingTPMode,
             m_config.customTPLevels,

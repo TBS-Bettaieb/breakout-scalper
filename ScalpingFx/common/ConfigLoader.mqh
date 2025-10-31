@@ -92,7 +92,6 @@ protected:
       m_config.baseMagic = baseMagic;
       m_config.useAllSymbols = false;
       m_config.timeframe = PERIOD_M5;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
    }
    
    // Setup risk and position sizing

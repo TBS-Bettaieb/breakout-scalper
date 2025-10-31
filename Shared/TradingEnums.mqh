@@ -5,14 +5,7 @@
 //+------------------------------------------------------------------+
 #property strict
 
-//+------------------------------------------------------------------+
-//| Strategy Mode Enumeration                                       |
-//+------------------------------------------------------------------+
-enum ENUM_STRATEGY_MODE
-{
-   STRATEGY_BREAKOUT,   // Breakout Strategy - Suivre la tendance
-   STRATEGY_REVERSION   // Mean Reversion Strategy - Contre-tendance
-};
+// (Removed ENUM_STRATEGY_MODE: strategy now defaults to BREAKOUT behavior everywhere)
 
 //+------------------------------------------------------------------+
 //| Custom Order Types for Trading                                  |

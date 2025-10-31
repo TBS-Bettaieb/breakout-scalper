@@ -202,7 +202,7 @@ bool ValidateSymbolAvailable(string symbol)
 //+------------------------------------------------------------------+
 void DisplayConfigurationInfo(BotConfig &config)
 {
-   string strategyTypeStr = (config.strategyMode == STRATEGY_BREAKOUT) ? "BREAKOUT" : "REVERSION";
+   string strategyTypeStr = "BREAKOUT";
    string trailingTPStr = "Disabled";
    
    if(config.useTrailingTP)
