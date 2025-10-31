@@ -327,7 +327,8 @@ private:
             m_config.customTPLevels,
             m_config.useDynamicTSLTrigger,      // 🆕 AJOUTER
             m_config.tslCostMultiplier,         // 🆕 AJOUTER
-            m_config.tslMinTriggerPoints        // 🆕 AJOUTER
+            m_config.tslMinTriggerPoints,       // 🆕 AJOUTER
+            m_config.useFvgFilter               // 🆕 FVG FILTER
          );
          
          if(m_symbolTraders[i] == NULL)

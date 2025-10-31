@@ -10,6 +10,7 @@
 // User Input Parameters
 input string   InpSymbolToTrade = "";  // Symbol to trade (empty = use chart symbol)
 input double   InpRiskPercent = -1.0;  // Risk per trade (%) (-1 = use group default)
+input bool     InpUseFvgFilter = false;  // Enable FVG Filter
 
 // Include required files
 #include "../ScalpingFx/Core/ForexScalperBot.mqh"
@@ -91,6 +92,13 @@ int OnInit()
    {
       config.riskPercent = InpRiskPercent;
       Logger::Warning("⚠️ Risk percent overridden to: " + DoubleToString(InpRiskPercent, 1) + "%");
+   }
+   
+   // Override FVG filter if specified in input
+   config.useFvgFilter = InpUseFvgFilter;
+   if(InpUseFvgFilter)
+   {
+      Logger::Warning("⚠️ FVG Filter overridden to: ON");
    }
    
    // Validate symbol is available before creating bot
@@ -231,6 +239,11 @@ void DisplayConfigurationInfo(BotConfig &config)
                                   config.stopBeforeNewsMin, config.startAfterNewsMin, config.newsCurrencies);
    }
    
+   string fvgFilterStr = "OFF";
+   if(config.useFvgFilter) {
+      fvgFilterStr = "ON";
+   }
+   
    string info = StringFormat(
       "=== %s ===\n" +
       "Symbol: %s\n" +
@@ -243,7 +256,8 @@ void DisplayConfigurationInfo(BotConfig &config)
       "Trading Hours: %02d:00-%02d:00\n" +
       "Trailing TP: %s\n" +
       "Risk Multiplier: %s\n" +
-      "News Filter: %s",
+      "News Filter: %s\n" +
+      "FVG Filter: %s",
       config.strategyName,
       currentSymbol,
       config.baseMagic,
@@ -255,7 +269,8 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.startHour, config.endHour,
       trailingTPStr,
       riskMultStr,
-      newsFilterStr
+      newsFilterStr,
+      fvgFilterStr
    );
    
    Comment(info);

@@ -87,6 +87,9 @@ private:
    double            m_tslCostMultiplier;
    int               m_tslMinTriggerPoints;
    
+   // 🆕 FVG Filter
+   bool              m_useFvgFilter;
+   
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
@@ -110,7 +113,8 @@ public:
                      string customTPLevels = "",
                      bool useDynamicTSLTrigger = true,      // 🆕 AJOUTER
                      double tslCostMultiplier = 1.5,        // 🆕 AJOUTER
-                     int tslMinTriggerPoints = 50)          // 🆕 AJOUTER
+                     int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
+                     bool useFvgFilter = false)             // 🆕 FVG FILTER
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -140,6 +144,9 @@ public:
       m_tslCostMultiplier = tslCostMultiplier;
       m_tslMinTriggerPoints = tslMinTriggerPoints;
       ArrayResize(m_positionCosts, 0);
+      
+      // 🆕 FVG Filter
+      m_useFvgFilter = useFvgFilter;
       
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
@@ -173,7 +180,8 @@ public:
       
       Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber,
             " | Dynamic TSL: ", (m_useDynamicTSLTrigger ? "ON" : "OFF"),
-            " | Cost Multiplier: ", DoubleToString(m_tslCostMultiplier, 1));
+            " | Cost Multiplier: ", DoubleToString(m_tslCostMultiplier, 1),
+            " | FVG Filter: ", (m_useFvgFilter ? "ON" : "OFF"));
    }
    
    //+------------------------------------------------------------------+

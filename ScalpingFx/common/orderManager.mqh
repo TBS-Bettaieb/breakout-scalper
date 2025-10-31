@@ -147,6 +147,37 @@ public:
          Print("✗ Failed to send Sell Stop order for ", params.symbol, " | Error: ", GetLastError());
       }
    }
+
+   // Cancel a pending order by ticket for given symbol/magic
+   static bool CancelOrderById(const OrderParams &params, const ulong ticket, const int magicNumber)
+   {
+      if(OrderSelect(ticket))
+      {
+         if(OrderGetInteger(ORDER_MAGIC) == magicNumber && OrderGetString(ORDER_SYMBOL) == params.symbol)
+         {
+            if(params.trade.OrderDelete(ticket))
+            {
+               Print("✓ Ordre #", ticket, " annulé pour ", params.symbol);
+               return true;
+            }
+            else
+            {
+               Print("✗ Échec de l'annulation de l'ordre #", ticket, " | Erreur: ", GetLastError());
+               return false;
+            }
+         }
+         else
+         {
+            Print("✗ Ticket #", ticket, " ne correspond pas au symbole ou au magic number.");
+            return false;
+         }
+      }
+      else
+      {
+         Print("✗ Impossible de sélectionner l'ordre #", ticket, " pour annulation.");
+         return false;
+      }
+   }
 };
 
 
