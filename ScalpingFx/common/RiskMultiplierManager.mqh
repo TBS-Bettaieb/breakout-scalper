@@ -121,7 +121,7 @@ public:
       }
       
       // Format classique (rétro-compatibilité)
-      datetime currentTime = TimeCurrent();
+      datetime currentTime = TimeGMT();
       MqlDateTime dt;
       TimeToStruct(currentTime, dt);
       
@@ -147,7 +147,7 @@ public:
    //+------------------------------------------------------------------+
    bool HasStatusChanged()
    {
-      datetime currentTime = TimeCurrent();
+      datetime currentTime = TimeGMT();
       
       // Vérifier chaque minute seulement
       if(currentTime - m_lastCheckTime < 60) return false;
@@ -241,7 +241,7 @@ public:
 
       // Fallback vers l'ancien format
       MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
+      TimeToStruct(TimeGMT(), dt);
       int currentMinutes = dt.hour * 60 + dt.min;
       int startMinutes = m_period.startHour * 60 + m_period.startMinute;
       int endMinutes = m_period.endHour * 60 + m_period.endMinute;
@@ -291,7 +291,7 @@ private:
    {
       if(m_period.timeRanges == "") return false;
       
-      datetime currentTime = TimeCurrent();
+      datetime currentTime = TimeGMT();
       MqlDateTime dt;
       TimeToStruct(currentTime, dt);
       

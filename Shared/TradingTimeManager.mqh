@@ -617,7 +617,7 @@ private:
          else
          {
             // Afficher l'alerte de blocage
-            datetime currentTime = TimeCurrent();
+            datetime currentTime = TimeGMT();
             
             // Mettre à jour l'alerte toutes les 5 minutes ou si le statut change
             if(forceUpdate || statusChanged || (currentTime - m_lastAlertTime) >= 300)
