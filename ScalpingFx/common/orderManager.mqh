@@ -1,0 +1,152 @@
+//+------------------------------------------------------------------+
+//|                                                  orderManager.mqh |
+//|                         Order management (calc lots, send orders) |
+//|                                      (c) 2025 - Public Domain     |
+//+------------------------------------------------------------------+
+#property strict
+
+#include <Trade/Trade.mqh>
+
+//+------------------------------------------------------------------+
+//| Order parameter bundle                                           |
+//+------------------------------------------------------------------+
+struct OrderParams
+{
+   string            symbol;
+   ENUM_TIMEFRAMES   timeframe;
+   double            point;
+   int               tpPoints;
+   int               slPoints;
+   int               entryOffsetPoints;
+   int               orderDistPoints;
+   int               expirationBars;
+   double            riskPercent;
+   double            currentRiskMultiplier;
+   string            tradeComment;
+   CTrade           *trade; // pointer for compatibility with MQL5 passing
+};
+
+//+------------------------------------------------------------------+
+//| Order manager with static helpers                                |
+//+------------------------------------------------------------------+
+class OrderManager
+{
+public:
+   // Factory to create parameters
+   static OrderParams CreateParams(const string symbol,
+                                   const ENUM_TIMEFRAMES timeframe,
+                                   const double point,
+                                   const int tpPoints,
+                                   const int slPoints,
+                                   const int entryOffsetPoints,
+                                   const int orderDistPoints,
+                                   const int expirationBars,
+                                   const double riskPercent,
+                                   const double currentRiskMultiplier,
+                                   const string tradeComment,
+                                   CTrade &trade)
+   {
+      OrderParams p;
+      p.symbol = symbol;
+      p.timeframe = timeframe;
+      p.point = point;
+      p.tpPoints = tpPoints;
+      p.slPoints = slPoints;
+      p.entryOffsetPoints = entryOffsetPoints;
+      p.orderDistPoints = orderDistPoints;
+      p.expirationBars = expirationBars;
+      p.riskPercent = riskPercent;
+      p.currentRiskMultiplier = currentRiskMultiplier;
+      p.tradeComment = tradeComment;
+      p.trade = &trade;
+      return p;
+   }
+
+   // Calculate lot size based on risk
+   static double CalcLots(const OrderParams &params, const double slPoints)
+   {
+      double effectiveRisk = params.riskPercent * params.currentRiskMultiplier;
+      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * effectiveRisk / 100.0;
+
+      double ticksize = SymbolInfoDouble(params.symbol, SYMBOL_TRADE_TICK_SIZE);
+      double tickvalue = SymbolInfoDouble(params.symbol, SYMBOL_TRADE_TICK_VALUE);
+      double lotstep = SymbolInfoDouble(params.symbol, SYMBOL_VOLUME_STEP);
+      double maxvolume = SymbolInfoDouble(params.symbol, SYMBOL_VOLUME_MAX);
+      double minvolume = SymbolInfoDouble(params.symbol, SYMBOL_VOLUME_MIN);
+      double volumelimit = SymbolInfoDouble(params.symbol, SYMBOL_VOLUME_LIMIT);
+
+      double moneyPerLotstep = (slPoints / ticksize) * tickvalue * lotstep;
+      if(moneyPerLotstep <= 0.0) return 0.0;
+
+      double lots = MathFloor(risk / moneyPerLotstep) * lotstep;
+
+      if(volumelimit != 0.0) lots = MathMin(lots, volumelimit);
+      if(maxvolume != 0.0)   lots = MathMin(lots, maxvolume);
+      if(minvolume != 0.0)   lots = MathMax(lots, minvolume);
+      lots = NormalizeDouble(lots, 2);
+
+      return lots;
+   }
+
+   // Send Buy (Stop) order with same logic as original
+   static void SendBuyOrder(const OrderParams &params, const double entry)
+   {
+      double ask = SymbolInfoDouble(params.symbol, SYMBOL_ASK);
+      double lots = 0.01;
+      // BREAKOUT: BuyStop (wait for breakout)
+      double adjustedEntry = entry - (params.entryOffsetPoints * params.point);
+      double adjustedTP = adjustedEntry + params.tpPoints * params.point;
+      double adjustedSL = adjustedEntry - params.slPoints * params.point;
+
+      if(params.riskPercent > 0.0) lots = CalcLots(params, adjustedEntry - adjustedSL);
+
+      datetime expiration = iTime(params.symbol, params.timeframe, 0) + params.expirationBars * PeriodSeconds(params.timeframe);
+
+
+      if(ask > adjustedEntry - params.orderDistPoints * params.point) return;
+
+      if(params.trade.BuyStop(lots, adjustedEntry, params.symbol, adjustedSL, adjustedTP,
+                              ORDER_TIME_SPECIFIED, expiration, params.tradeComment))
+      {
+         Print("✓ Buy Stop order sent for ", params.symbol, " at ", adjustedEntry,
+               " (offset: ", params.entryOffsetPoints, " pts) | Lots: ", lots);
+      }
+      else
+      {
+         Print("✗ Failed to send Buy Stop order for ", params.symbol, " | Error: ", GetLastError());
+      }
+   }
+
+   // Send Sell (Stop) order with same logic as original
+   static void SendSellOrder(const OrderParams &params, const double entry)
+   {
+      double bid = SymbolInfoDouble(params.symbol, SYMBOL_BID);
+      double lots = 0.01;
+      // BREAKOUT: SellStop (wait for breakout)
+      double adjustedEntryS = entry + (params.entryOffsetPoints * params.point);
+      double adjustedTPS = adjustedEntryS - params.tpPoints * params.point;
+      double adjustedSLS = adjustedEntryS + params.slPoints * params.point;
+
+      if(params.riskPercent > 0.0) lots = CalcLots(params, adjustedSLS - adjustedEntryS);
+
+
+      datetime expiration = iTime(params.symbol, params.timeframe, 0) + params.expirationBars * PeriodSeconds(params.timeframe);
+
+      
+
+      if(bid < adjustedEntryS + params.orderDistPoints * params.point) return;
+
+      if(params.trade.SellStop(lots, adjustedEntryS, params.symbol, adjustedSLS, adjustedTPS,
+                               ORDER_TIME_SPECIFIED, expiration, params.tradeComment))
+      {
+         Print("✓ Sell Stop order sent for ", params.symbol, " at ", adjustedEntryS,
+               " (offset: ", params.entryOffsetPoints, " pts) | Lots: ", lots);
+      }
+      else
+      {
+         Print("✗ Failed to send Sell Stop order for ", params.symbol, " | Error: ", GetLastError());
+      }
+   }
+};
+
+

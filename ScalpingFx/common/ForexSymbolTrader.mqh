@@ -13,6 +13,7 @@
 #include "ForexSwingAnalyzer.mqh"
 #include "ForexTrendlineManager.mqh"
 #include "../../Shared/TrailingTP_System.mqh"
+#include "orderManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -909,62 +910,31 @@ private:
    //+------------------------------------------------------------------+
    //| Calculer la taille du lot basée sur le risque                   |
    //+------------------------------------------------------------------+
-   double CalcLots(double slPoints)
+   OrderParams BuildOrderParams()
    {
-      double effectiveRisk = m_riskPercent * m_currentRiskMultiplier; // 🆕
-      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * effectiveRisk / 100;
-      
-      double ticksize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
-      double tickvalue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
-      double lotstep = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP);
-      double maxvolume = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX);
-      double minvolume = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN);
-      double volumelimit = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_LIMIT);
-      
-      double moneyPerLotstep = slPoints / ticksize * tickvalue * lotstep;
-      double lots = MathFloor(risk / moneyPerLotstep) * lotstep;
-      
-      if(volumelimit != 0) lots = MathMin(lots, volumelimit);
-      if(maxvolume != 0) lots = MathMin(lots, SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX));
-      if(minvolume != 0) lots = MathMax(lots, SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN));
-      lots = NormalizeDouble(lots, 2);
-      
-      return lots;
+      return OrderManager::CreateParams(
+         m_symbol,
+         m_timeframe,
+         m_point,
+         m_tpPoints,
+         m_slPoints,
+         m_entryOffsetPoints,
+         m_orderDistPoints,
+         m_expirationBars,
+         m_riskPercent,
+         m_currentRiskMultiplier,
+         m_tradeComment,
+         m_trade
+      );
    }
+   
    
    //+------------------------------------------------------------------+
    //| Envoyer un ordre Buy (Stop ou Limit selon la stratégie)         |
    //+------------------------------------------------------------------+
    void SendBuyOrder(double entry)
    {
-      double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
-      
-      double tp = entry + m_tpPoints * m_point;
-      double sl = entry - m_slPoints * m_point;
-      
-      double lots = 0.01;
-      if(m_riskPercent > 0) lots = CalcLots(entry - sl);
-      
-      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
-      
-      // BREAKOUT par défaut : utiliser BuyStop (attendre la cassure)
-      double adjustedEntry = entry - (m_entryOffsetPoints * m_point);
-      double adjustedTP = adjustedEntry + m_tpPoints * m_point;
-      double adjustedSL = adjustedEntry - m_slPoints * m_point;
-      
-      if(m_riskPercent > 0) lots = CalcLots(adjustedEntry - adjustedSL);
-      
-      if(ask > adjustedEntry - m_orderDistPoints * m_point) return;
-      
-      if(m_trade.BuyStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-      {
-         Print("✓ Buy Stop order sent for ", m_symbol, " at ", adjustedEntry, 
-               " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
-      }
-      else
-      {
-         Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
-      }
+      OrderManager::SendBuyOrder(BuildOrderParams(), entry);
    }
    
    //+------------------------------------------------------------------+
@@ -972,34 +942,7 @@ private:
    //+------------------------------------------------------------------+
    void SendSellOrder(double entry)
    {
-      double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-      
-      double tp = entry - m_tpPoints * m_point;
-      double sl = entry + m_slPoints * m_point;
-      
-      double lots = 0.01;
-      if(m_riskPercent > 0) lots = CalcLots(sl - entry);
-      
-      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
-      
-      // BREAKOUT par défaut : utiliser SellStop (attendre la cassure)
-      double adjustedEntryS = entry + (m_entryOffsetPoints * m_point);
-      double adjustedTPS = adjustedEntryS - m_tpPoints * m_point;
-      double adjustedSLS = adjustedEntryS + m_slPoints * m_point;
-      
-      if(m_riskPercent > 0) lots = CalcLots(adjustedSLS - adjustedEntryS);
-      
-      if(bid < adjustedEntryS + m_orderDistPoints * m_point) return;
-      
-      if(m_trade.SellStop(lots, adjustedEntryS, m_symbol, adjustedSLS, adjustedTPS, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-      {
-         Print("✓ Sell Stop order sent for ", m_symbol, " at ", adjustedEntryS,
-               " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
-      }
-      else
-      {
-         Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
-      }
+      OrderManager::SendSellOrder(BuildOrderParams(), entry);
    }
    
    //+------------------------------------------------------------------+
