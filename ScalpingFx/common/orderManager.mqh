@@ -13,7 +13,8 @@
 struct OrderParams
 {
    string            symbol;
-   ENUM_TIMEFRAMES   timeframe;
+   ENUM_TIMEFRAMES   timeframe; 
+   int               magicNumber;
    double            point;
    int               tpPoints;
    int               slPoints;
@@ -35,6 +36,7 @@ public:
    // Factory to create parameters
    static OrderParams CreateParams(const string symbol,
                                    const ENUM_TIMEFRAMES timeframe,
+											  const	int magicNumber,
                                    const double point,
                                    const int tpPoints,
                                    const int slPoints,
@@ -49,6 +51,7 @@ public:
       OrderParams p;
       p.symbol = symbol;
       p.timeframe = timeframe;
+		p.magicNumber=magicNumber;
       p.point = point;
       p.tpPoints = tpPoints;
       p.slPoints = slPoints;
@@ -149,11 +152,11 @@ public:
    }
 
    // Cancel a pending order by ticket for given symbol/magic
-   static bool CancelOrderById(const OrderParams &params, const ulong ticket, const int magicNumber)
+   static bool CancelOrderById(const OrderParams &params, const ulong ticket)
    {
       if(OrderSelect(ticket))
       {
-         if(OrderGetInteger(ORDER_MAGIC) == magicNumber && OrderGetString(ORDER_SYMBOL) == params.symbol)
+         if(OrderGetInteger(ORDER_MAGIC) == params.magicNumber && OrderGetString(ORDER_SYMBOL) == params.symbol)
          {
             if(params.trade.OrderDelete(ticket))
             {

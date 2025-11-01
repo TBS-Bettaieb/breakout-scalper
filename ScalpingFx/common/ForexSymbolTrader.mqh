@@ -14,6 +14,7 @@
 #include "ForexTrendlineManager.mqh"
 #include "../../Shared/TrailingTP_System.mqh"
 #include "orderManager.mqh"
+#include "Filters/FVGTradeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -89,6 +90,7 @@ private:
    
    // 🆕 FVG Filter
    bool              m_useFvgFilter;
+   FVGTradeFilter    m_fvgFilter;           // Filtre FVG pour validation des trades
    
 public:
    //+------------------------------------------------------------------+
@@ -147,6 +149,7 @@ public:
       
       // 🆕 FVG Filter
       m_useFvgFilter = useFvgFilter;
+      m_fvgFilter.Init(m_symbol, m_timeframe, m_useFvgFilter);
       
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
@@ -212,9 +215,14 @@ public:
    //+------------------------------------------------------------------+
    void OnTick()
    {
+
+      CheckFvgDisqualifier();
+
       // Vérifier si c'est une nouvelle barre
       if(!IsNewBar()) return;
       
+
+      m_fvgFilter.OnNewBar();
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
       // Mettre à jour les compteurs
@@ -244,6 +252,89 @@ public:
          }
       }
    }
+
+      //+------------------------------------------------------------------+
+   //| Vérifier et annuler les ordres disqualifiés par le filtre FVG    |
+   //+------------------------------------------------------------------+
+   bool CheckFvgDisqualifier()
+   {
+      if(!m_fvgFilter.GetEnabled())
+         return false;
+
+
+      // Utiliser OrderManager::FindTicketViolatingPriceTolerance pour trouver un ordre dépassant le priceTolerance
+      ulong violatingTicket = 0;
+      bool isBuy = false;
+      double priceTolerance = SymbolInfoDouble(m_symbol, SYMBOL_BID) * 0.0001; // 0.01% tolerance
+      double orderPrice = 0.0;
+      double orderSL = 0.0;
+      if(FindTicketViolatingPriceTolerance(priceTolerance, violatingTicket, isBuy, orderPrice, orderSL))
+      {
+         
+            bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
+
+            if(!isAllowed)
+            {
+               if(CancelOrderById(violatingTicket))
+               {
+               }
+               else
+               {
+                  Logger::Error(StringFormat("❌ Erreur suppression ordre #%I64u | Erreur: %d", violatingTicket, GetLastError()));
+               }
+
+               //m_orderManager.SendLimitOrder(!isBuy, orderPrice);
+            }
+            
+         
+      }
+			return false;
+   }
+
+   
+     //+------------------------------------------------------------------+
+  //| Retourner un ticket violant priceTolerance (+ sens isBuy)        |
+  //+------------------------------------------------------------------+
+  // Modifié pour retourner également le StopLoss de l'ordre (slOrder)
+  bool FindTicketViolatingPriceTolerance(const double priceTolerance, ulong &ticket, bool &isBuy, double &orderPrice, double &slOrder)
+  {
+   ticket = 0;
+   isBuy = false;
+   slOrder = 0.0;
+   orderPrice=0.0;
+   bool shouldCheckFVG = false;
+   double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong t = OrderGetTicket(i);
+      if(!OrderSelect(t)) continue;
+      if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
+      if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
+      orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+      slOrder = OrderGetDouble(ORDER_SL);
+      long orderType = OrderGetInteger(ORDER_TYPE);
+      double distanceToPrice = MathAbs(currentPrice - orderPrice);
+
+      if(distanceToPrice >= priceTolerance)
+        {
+         ticket = t;
+               if(orderType == ORDER_TYPE_BUY_STOP)
+              {
+               isBuy = true;
+               shouldCheckFVG = true;
+              }
+             else if(orderType == ORDER_TYPE_SELL_STOP)
+              {
+               isBuy = false;
+               shouldCheckFVG = true;
+              }
+              if(shouldCheckFVG)
+               return true;
+        }
+     }
+   return shouldCheckFVG;
+  }
+
    //+------------------------------------------------------------------+
    //| 🆕 Trailing Stop Loss DYNAMIQUE basé sur les coûts réels        |
    //+------------------------------------------------------------------+
@@ -382,6 +473,12 @@ public:
       }
    }
    
+   bool CancelOrderById(const ulong ticket)
+   {
+      return OrderManager::CancelOrderById(BuildOrderParams(), ticket);
+   }
+
+
    //+------------------------------------------------------------------+
    //| Fermer toutes les positions et ordres pour ce symbole          |
    //+------------------------------------------------------------------+
@@ -923,6 +1020,7 @@ private:
       return OrderManager::CreateParams(
          m_symbol,
          m_timeframe,
+			m_magicNumber,
          m_point,
          m_tpPoints,
          m_slPoints,

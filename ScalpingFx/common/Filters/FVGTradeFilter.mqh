@@ -11,7 +11,6 @@ private:
    string           m_symbol;
    ENUM_TIMEFRAMES  m_timeframe;
    double           m_radiusPts;
-   datetime         m_lastBarTime; // cache de nouvelle bougie
 
 public:
    FVGTradeFilter()
@@ -21,7 +20,6 @@ public:
       m_symbol    = "";
       m_timeframe = PERIOD_CURRENT;
       m_radiusPts = 500.0;
-      m_lastBarTime = 0;
      }
 
    ~FVGTradeFilter()
@@ -33,6 +31,18 @@ public:
         }
      }
 
+
+   // Appelée à chaque nouvelle bougie sur le timeframe surveillé :
+   void OnNewBar()
+     {
+      if(!m_enabled || m_detector == NULL)
+         return;
+      m_detector.ProcessTimeframe(m_timeframe);
+      m_detector.UpdateInvalidation(m_timeframe);
+
+     }
+
+     
    void Init(const string symbol, const ENUM_TIMEFRAMES tf, const bool enabled)
      {
       m_symbol    = symbol;
@@ -66,7 +76,6 @@ public:
       // initial pass
       m_detector.ProcessTimeframe(m_timeframe);
       m_detector.UpdateInvalidation(m_timeframe);
-      m_lastBarTime = iTime(m_symbol, m_timeframe, 0);
      }
 
    void SetEnabled(bool enabled)
@@ -84,19 +93,14 @@ public:
       m_radiusPts = MathMax(50.0, radiusPts);
      }
 
-   bool IsTradeAllowedByFVG(const double entryPrice, const double stopLoss, const bool isBuy)
+   
+   
+     bool IsTradeAllowedByFVG(const double entryPrice, const double stopLoss, const bool isBuy)
      {
       if(!m_enabled || m_detector == NULL)
          return true;
 
-      // Ne recalculer que si nouvelle bougie
-      datetime cur = iTime(m_symbol, m_timeframe, 0);
-      if(cur != m_lastBarTime || m_lastBarTime == 0)
-        {
-         m_detector.ProcessTimeframe(m_timeframe);
-         m_detector.UpdateInvalidation(m_timeframe);
-         m_lastBarTime = cur;
-        }
+     
 
       FVGInfo fvgs[];
       if(isBuy)
