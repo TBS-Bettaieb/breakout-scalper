@@ -4,7 +4,7 @@
 //|                                                     Version 1.0  |
 //+------------------------------------------------------------------+
 #property link      "https://www.mql5.com"
-#property version   "1.0"
+#property version   "1.1"
 #property strict
 
 // User Input Parameters

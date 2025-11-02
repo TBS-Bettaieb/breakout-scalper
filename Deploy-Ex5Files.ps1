@@ -16,7 +16,7 @@ $ProjectRoot = $ScriptDir
 
 $TerminalPath = Split-Path -Parent (Split-Path -Parent $ProjectRoot)
 
-$SourceDir = Join-Path $ProjectRoot "EA\_Release"
+$SourceDir = Join-Path $ProjectRoot "_Release"
 $DestDir = Join-Path $TerminalPath "Experts\EAsReleases"
 
 Write-Info "================================================"

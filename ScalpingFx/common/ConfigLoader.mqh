@@ -251,7 +251,7 @@ public:
    {
       m_groupName = "GER40_Index";
       AddSymbols("GER40.cash");
-      
+      AddSymbols("DE40");
       // Configuration from GER40_Scalper.mq5
       SetupBasicParams("GER40 Scalper V1.0", "GER40_Scalper", 28834731);
       SetupRiskParams(0.5, 7000, 5500);
@@ -300,8 +300,8 @@ public:
    bool Initialize() override
    {
       m_groupName = "US100_Index";
-      AddSymbols("US100.cash");
-      
+      AddSymbols("US100.cash"); 
+      AddSymbols("USTEC");
       // Configuration from USIndices_Scalper.mq5
       SetupBasicParams("US100 Index Scalper V1.0", "US100_Scalper", 29834757);
       SetupRiskParams(0.5, 5000, 5000);
@@ -326,7 +326,7 @@ public:
    {
       m_groupName = "US30_Index";
       AddSymbols("US30.cash");
-      
+      AddSymbols("US30");
       // Configuration from USIndices_Scalper.mq5
       SetupBasicParams("US30 Index Scalper V1.0", "US30_Scalper", 29834758);
       SetupRiskParams(0.5, 7000, 5500);
@@ -351,7 +351,7 @@ public:
    {
       m_groupName = "US500_Index";
       AddSymbols("US500.cash");
-      
+      AddSymbols("US500");
       // Configuration from USIndices_Scalper.mq5
       SetupBasicParams("US500 Index Scalper V1.0", "US500_Scalper", 29834759);
       SetupRiskParams(0.25, 4000, 3600);
