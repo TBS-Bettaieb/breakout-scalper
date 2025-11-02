@@ -283,7 +283,13 @@ public:
                   Logger::Error(StringFormat("❌ Erreur suppression ordre #%I64u | Erreur: %d", violatingTicket, GetLastError()));
                }
 
-               //m_orderManager.SendLimitOrder(!isBuy, orderPrice);
+               
+            }
+
+
+            if(!isAllowed)
+            {
+               OrderManager::SendLimitOrder(BuildOrderParams(),!isBuy, orderPrice,"FVG");
             }
             
          

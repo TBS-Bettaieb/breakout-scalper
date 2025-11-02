@@ -65,6 +65,79 @@ public:
       return p;
    }
 
+
+   //+------------------------------------------------------------------+
+   //| Envoyer un ordre Limit (délègue aux variantes BUY/SELL)         |
+   //+------------------------------------------------------------------+
+   static bool SendLimitOrder(const OrderParams &params, bool isBuy, double entry, const string tradeCommentSuffix = "")
+   {
+      return isBuy ? SendBuyLimitOrder(params, entry, tradeCommentSuffix) : SendSellLimitOrder(params, entry, tradeCommentSuffix);
+   }
+
+   //+------------------------------------------------------------------+
+   //| Envoyer un ordre Buy Limit                                       |
+   //+------------------------------------------------------------------+
+   static bool SendBuyLimitOrder(const OrderParams &params, double entry, const string tradeCommentSuffix = "")
+   {
+      // Calculer TP et SL avec offset (pour Buy Limit: entry est en dessous du prix actuel)
+      double adjustedEntry = entry - (params.entryOffsetPoints * params.point);
+      double adjustedTP = adjustedEntry + params.tpPoints * params.point;
+      double adjustedSL = adjustedEntry - params.slPoints * params.point;
+
+      datetime expiration = iTime(params.symbol, params.timeframe, 0) + params.expirationBars * PeriodSeconds(params.timeframe);
+
+      double lots = 0.01;
+      if(params.riskPercent > 0.0)
+         lots = CalcLots(params, adjustedEntry - adjustedSL);
+
+      string comment = params.tradeComment;
+      if(tradeCommentSuffix != "")
+         comment = params.tradeComment + "_" + tradeCommentSuffix;
+
+      if(params.trade.BuyLimit(lots, adjustedEntry, params.symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, comment))
+      {
+         Print("✓ Buy Limit order sent for ", params.symbol, " at ", adjustedEntry, " | Lots: ", lots);
+         return true;
+      }
+      else
+      {
+         Print("✗ Failed to send Buy Limit order for ", params.symbol, " | Error: ", GetLastError());
+         return false;
+      }
+   }
+
+   //+------------------------------------------------------------------+
+   //| Envoyer un ordre Sell Limit                                      |
+   //+------------------------------------------------------------------+
+   static bool SendSellLimitOrder(const OrderParams &params, double entry, const string tradeCommentSuffix = "")
+   {
+      // Calculer TP et SL avec offset (pour Sell Limit: entry est au-dessus du prix actuel)
+      double adjustedEntry = entry + (params.entryOffsetPoints * params.point);
+      double adjustedTP = adjustedEntry - params.tpPoints * params.point;
+      double adjustedSL = adjustedEntry + params.slPoints * params.point;
+
+      datetime expiration = iTime(params.symbol, params.timeframe, 0) + params.expirationBars * PeriodSeconds(params.timeframe);
+
+      double lots = 0.01;
+      if(params.riskPercent > 0.0)
+         lots = CalcLots(params, adjustedSL - adjustedEntry);
+
+      string comment = params.tradeComment;
+      if(tradeCommentSuffix != "")
+         comment = params.tradeComment + "_" + tradeCommentSuffix;
+
+      if(params.trade.SellLimit(lots, adjustedEntry, params.symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, comment))
+      {
+         Print("✓ Sell Limit order sent for ", params.symbol, " at ", adjustedEntry, " | Lots: ", lots);
+         return true;
+      }
+      else
+      {
+         Print("✗ Failed to send Sell Limit order for ", params.symbol, " | Error: ", GetLastError());
+         return false;
+      }
+   }
+  
    // Calculate lot size based on risk
    static double CalcLots(const OrderParams &params, const double slPoints)
    {
