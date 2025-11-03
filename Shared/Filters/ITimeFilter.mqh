@@ -8,29 +8,28 @@ class ITimeFilter
 {
 public:
    virtual ~ITimeFilter() {}
-
-   // Main method - must be implemented
    virtual bool IsTradingAllowed() = 0;
-
-   // Common methods with defaults
    virtual string GetStatusMessage() const { return ""; }
    virtual string GetDescription() const { return "Filter"; }
    virtual bool IsEnabled() const = 0;
 
-   // Configuration logging
-   virtual void SetLogPrefix(string prefix) { m_logPrefix = prefix; }
-
 protected:
-   string   m_logPrefix;
-   bool     m_lastLoggedState;
+   string m_logPrefix;
+   bool m_lastLoggedState;
    datetime m_lastLogTime;
-
-   // Anti-spam logging helper
+   
+   ITimeFilter()
+   {
+      m_logPrefix = "";
+      m_lastLoggedState = true;
+      m_lastLogTime = 0;
+   }
+   
    void LogIfChanged(bool currentState, string message)
    {
       if(currentState != m_lastLoggedState || TimeGMT() - m_lastLogTime > 300)
       {
-         Print(m_logPrefix + message);
+         if(m_logPrefix != "") Print(m_logPrefix + message);
          m_lastLoggedState = currentState;
          m_lastLogTime = TimeGMT();
       }

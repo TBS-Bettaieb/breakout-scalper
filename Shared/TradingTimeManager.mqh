@@ -17,14 +17,15 @@
 // Include ChartManager pour utiliser ses méthodes
 #include "ChartManager.mqh"
 
-// Include des filtres modulaires - ORDRE IMPORTANT pour les énumérations
-#include "Filters/SessionFilter.mqh"     // Doit être en premier pour ENUM_TRADING_SESSION
-#include "Filters/NewsFilter.mqh"        // Doit être en deuxième pour ENUM_NEWS_SEPARATOR
+// Interface en premier
+#include "Filters/ITimeFilter.mqh"
+
+// Implémentations ensuite
 #include "Filters/TimeRangeFilter.mqh"
 #include "Filters/DayRangeFilter.mqh"
+#include "Filters/SessionFilter.mqh"
+#include "Filters/NewsFilter.mqh"
 #include "Filters/TimeMinuteFilter.mqh"
-// New interface for polymorphic filters
-#include "Filters/ITimeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Énumération des états du trading                                |
