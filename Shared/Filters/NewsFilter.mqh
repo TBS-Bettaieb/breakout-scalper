@@ -27,6 +27,8 @@
 //| - StartTradingMin=10 : reprendre 10 min après l'actualité       |
 //+------------------------------------------------------------------+
 #property strict
+// New architecture include
+#include "ITimeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Énumération des séparateurs de liste                             |
@@ -170,7 +172,7 @@ bool IsNewsAllowed(
 //+------------------------------------------------------------------+
 //| Classe de gestion des filtres par actualités                    |
 //+------------------------------------------------------------------+
-class NewsFilter
+class NewsFilter : public ITimeFilter
 {
 private:
    // Configuration
@@ -189,8 +191,6 @@ private:
    string                  m_newsToAvoid[];
    
    // Logging
-   datetime                m_lastLogTime;
-   string                  m_logPrefix;
    string                  m_lastBlockReason;
 
 public:
@@ -211,6 +211,8 @@ public:
       m_lastNewsMessage = "";
       m_lastLogTime = 0;
       m_logPrefix = "[NewsFilter] ";
+      m_lastLoggedState = true;
+      m_lastLogTime = 0;
       m_lastBlockReason = "";
    }
 
@@ -236,15 +238,12 @@ public:
       m_separator = separator;
    }
 
-   void SetLogPrefix(string prefix)
-   {
-      m_logPrefix = prefix;
-   }
+   void SetLogPrefix(string prefix) { m_logPrefix = prefix; }
 
    //+------------------------------------------------------------------+
    //| Vérifications principales                                       |
    //+------------------------------------------------------------------+
-   bool IsTradingAllowed()
+   bool IsTradingAllowed() override
    {
       if(!m_useFilter) return true;
 
@@ -255,8 +254,7 @@ public:
          // Logging anti-spam
          if(TimeGMT() - m_lastLogTime >= 60)
          {
-            Print(m_logPrefix + "⏳ Attente ", m_startTradingMin, 
-                  " min après actualité avant reprise trading");
+            LogIfChanged(false, StringFormat("Waiting %d min after news before resuming", m_startTradingMin));
             m_lastLogTime = TimeGMT();
             m_lastBlockReason = "Waiting after news event";
          }
@@ -296,9 +294,21 @@ public:
       return "News: " + m_currencies + " | Keywords: " + m_keywords;
    }
 
-   bool IsEnabled() const
+   bool IsEnabled() const override
    {
       return m_useFilter;
+   }
+
+   virtual string GetDescription() const override
+   {
+      if(!m_useFilter) return "News: Disabled";
+      return "News: " + m_currencies + ", keywords: " + m_keywords;
+   }
+
+   virtual string GetStatusMessage() const override
+   {
+      if(!m_useFilter) return "NewsFilter: OFF";
+      return "NewsFilter: ON [" + m_currencies + "]";
    }
 
    // Obtenir les devises surveillées
@@ -386,7 +396,7 @@ private:
                   // Logging anti-spam
                   if(TimeGMT() - m_lastLogTime >= 60)
                   {
-                     Print(m_logPrefix + "📰 Trading désactivé: ", m_lastNewsMessage);
+                     LogIfChanged(false, "Trading disabled due to news: " + m_lastNewsMessage);
                      m_lastLogTime = TimeGMT();
                   }
                   
