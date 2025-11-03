@@ -375,6 +375,16 @@ private:
             "",    // dayRanges
             true   // verboseLogging
          );
+
+         // Polymorphic filter path (new architecture)
+         TimeRangeFilter* trf = new TimeRangeFilter();
+         if(trf != NULL)
+         {
+            if(trf.Initialize(true, m_config.tradingTimeRanges))
+               m_timeManager.AddFilter(trf);
+            else
+               delete trf;
+         }
       }
       else
       {
@@ -386,6 +396,20 @@ private:
             "",
             true
          );
+
+         // Polymorphic filter path (new architecture) for start/end
+         if(m_config.startHour != 0 || m_config.endHour != 0)
+         {
+            string rangeStr = IntegerToString(m_config.startHour) + "-" + IntegerToString(m_config.endHour);
+            TimeRangeFilter* trf2 = new TimeRangeFilter();
+            if(trf2 != NULL)
+            {
+               if(trf2.Initialize(true, rangeStr))
+                  m_timeManager.AddFilter(trf2);
+               else
+                  delete trf2;
+            }
+         }
       }
       
       m_timeManager.SetVerboseLogging(true);
