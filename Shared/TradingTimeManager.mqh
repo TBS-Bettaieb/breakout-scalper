@@ -23,6 +23,8 @@
 #include "Filters/TimeRangeFilter.mqh"
 #include "Filters/DayRangeFilter.mqh"
 #include "Filters/TimeMinuteFilter.mqh"
+// New interface for polymorphic filters
+#include "Filters/ITimeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Énumération des états du trading                                |
@@ -52,6 +54,9 @@ private:
    SessionFilter*       m_sessionFilter;
    NewsFilter*          m_newsFilter;
    TimeMinuteFilter*    m_timeMinuteFilter;
+   
+   // Polymorphic filters (new architecture)
+   ITimeFilter*         m_filters[];
    
    // Paramètres des filtres
    string               m_hourRanges;
@@ -100,6 +105,7 @@ public:
       m_sessionFilter = NULL;
       m_newsFilter = NULL;
       m_timeMinuteFilter = NULL;
+      ArrayResize(m_filters, 0);
       
       // Initialiser les paramètres des filtres
       m_hourRanges = "";
@@ -143,6 +149,12 @@ public:
       if(m_sessionFilter != NULL) { delete m_sessionFilter; m_sessionFilter = NULL; }
       if(m_newsFilter != NULL) { delete m_newsFilter; m_newsFilter = NULL; }
       if(m_timeMinuteFilter != NULL) { delete m_timeMinuteFilter; m_timeMinuteFilter = NULL; }
+      // Cleanup polymorphic filters
+      for(int i=0;i<ArraySize(m_filters);i++)
+      {
+         if(m_filters[i] != NULL) { delete m_filters[i]; m_filters[i] = NULL; }
+      }
+      ArrayFree(m_filters);
       
       // Ne pas supprimer m_chartManager car il est géré ailleurs
       HideAlert();
@@ -299,12 +311,39 @@ public:
       m_chartManager = chartMgr;
    }
 
+   // Ajouter un filtre polymorphique (nouvelle architecture)
+   void AddFilter(ITimeFilter* filter)
+   {
+      if(filter == NULL) return;
+      int sz = ArraySize(m_filters);
+      ArrayResize(m_filters, sz + 1);
+      m_filters[sz] = filter;
+   }
+
    //+------------------------------------------------------------------+
    //| Vérification principale du trading                              |
    //| Architecture modulaire avec gestion NULL-safe                  |
    //+------------------------------------------------------------------+
    bool IsTradingAllowed()
    {
+      // Nouvelle logique: si des filtres polymorphiques existent, les utiliser
+      if(ArraySize(m_filters) > 0)
+      {
+         for(int i=0;i<ArraySize(m_filters);i++)
+         {
+            if(m_filters[i] != NULL && m_filters[i].IsEnabled())
+            {
+               if(!m_filters[i].IsTradingAllowed())
+               {
+                  UpdateStatus(TRADING_BLOCKED_MULTIPLE);
+                  return false;
+               }
+            }
+         }
+         UpdateStatus(TRADING_ACTIVE);
+         return true;
+      }
+
       // Si aucun filtre n'est actif, le trading est toujours autorisé
       if(m_timeRangeFilter == NULL && m_dayRangeFilter == NULL && 
          m_sessionFilter == NULL && m_newsFilter == NULL && 
@@ -445,6 +484,14 @@ public:
       if(m_sessionFilter != NULL) info += "  ✓ Session\n";
       if(m_newsFilter != NULL) info += "  ✓ News\n";
       if(m_timeMinuteFilter != NULL) info += "  ✓ TimeMinute\n";
+      if(ArraySize(m_filters) > 0)
+      {
+         for(int i=0;i<ArraySize(m_filters);i++)
+         {
+            if(m_filters[i] != NULL && m_filters[i].IsEnabled())
+               info += "  ✓ " + m_filters[i].GetDescription() + "\n";
+         }
+      }
       
       // Informations actuelles
       MqlDateTime dt;
