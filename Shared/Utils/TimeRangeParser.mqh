@@ -80,29 +80,53 @@ private:
 
    static int ParseTimeToMinutes(string time)
    {
-      // Support "HH:MM" and compact "HHMM"
+      // Support multiple formats: "8", "17", "8:30", "08:30", "830", "0830"
       StringTrimLeft(time);
       StringTrimRight(time);
-
+      
+      if(time == "") return -1;
+      
+      int hour = 0, minute = 0;
       int colon = StringFind(time, ":");
-      int hour, minute;
-
+      
       if(colon >= 0)
       {
+         // Format "H:MM" ou "HH:MM"
          hour   = (int)StringToInteger(StringSubstr(time, 0, colon));
          minute = (int)StringToInteger(StringSubstr(time, colon + 1));
       }
       else
       {
          int len = StringLen(time);
-         if(len < 1) return -1;
-         if(len < 3 || len > 4) return -1;
-
-         hour   = (int)StringToInteger(StringSubstr(time, 0, len - 2));
-         minute = (int)StringToInteger(StringSubstr(time, len - 2));
+         
+         if(len == 1 || len == 2)
+         {
+            // Format simple "8" ou "17" → heures pleines
+            hour = (int)StringToInteger(time);
+            minute = 0;
+         }
+         else if(len == 3)
+         {
+            // Format compact "830" → 8h30
+            hour   = (int)StringToInteger(StringSubstr(time, 0, 1));
+            minute = (int)StringToInteger(StringSubstr(time, 1, 2));
+         }
+         else if(len == 4)
+         {
+            // Format compact "0830" ou "1730" → 8h30 ou 17h30
+            hour   = (int)StringToInteger(StringSubstr(time, 0, 2));
+            minute = (int)StringToInteger(StringSubstr(time, 2, 2));
+         }
+         else
+         {
+            return -1; // Format non supporté
+         }
       }
-
-      if(hour < 0 || hour > 23 || minute < 0 || minute > 59) return -1;
+      
+      // Validation
+      if(hour < 0 || hour > 23 || minute < 0 || minute > 59)
+         return -1;
+      
       return hour * 60 + minute;
    }
 };

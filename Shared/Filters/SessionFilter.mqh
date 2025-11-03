@@ -243,6 +243,23 @@ public:
    }
 
    //+------------------------------------------------------------------+
+   //| NOUVELLE MÉTHODE: Initialize pour cohérence avec autres filtres |
+   //+------------------------------------------------------------------+
+   bool Initialize(bool enabled, ENUM_TRADING_SESSION session, int avoidMinutes)
+   {
+      m_useFilter = enabled;
+      m_allowedSession = session;
+      m_avoidOpeningMinutes = avoidMinutes;
+      
+      if(!enabled)
+         return true;
+      
+      Print(m_logPrefix + "Initialized with session: " + GetSessionName(session) + 
+            ", avoid " + IntegerToString(avoidMinutes) + " minutes");
+      return true;
+   }
+
+   //+------------------------------------------------------------------+
    //| Configuration                                                    |
    //+------------------------------------------------------------------+
    void SetSession(ENUM_TRADING_SESSION session, int avoidOpeningMinutes)

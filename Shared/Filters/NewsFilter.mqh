@@ -217,6 +217,36 @@ public:
    }
 
    //+------------------------------------------------------------------+
+   //| NOUVELLE MÉTHODE: Initialize pour cohérence avec autres filtres |
+   //+------------------------------------------------------------------+
+   bool Initialize(
+      bool enabled,
+      string currencies,
+      string keywords,
+      int stopBeforeMin,
+      int startTradingMin,
+      int daysLookup,
+      ENUM_NEWS_SEPARATOR separator
+   )
+   {
+      m_useFilter = enabled;
+      m_currencies = currencies;
+      m_keywords = keywords;
+      m_stopBeforeMin = stopBeforeMin;
+      m_startTradingMin = startTradingMin;
+      m_daysLookup = daysLookup;
+      m_separator = separator;
+      
+      if(!enabled || currencies == "" || keywords == "")
+         return true;
+      
+      Print(m_logPrefix + "Initialized with currencies: " + currencies + 
+            ", keywords: " + keywords + 
+            ", stopBefore: " + IntegerToString(stopBeforeMin) + " min");
+      return true;
+   }
+
+   //+------------------------------------------------------------------+
    //| Configuration                                                    |
    //+------------------------------------------------------------------+
    void InitFromInputs(

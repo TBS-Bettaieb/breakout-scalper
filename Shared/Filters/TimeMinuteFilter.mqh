@@ -22,6 +22,8 @@
 //| - TimeMinuteRanges="9:00-11:30;14:00-16:30" : deux sessions      |
 //+------------------------------------------------------------------+
 #property strict
+// New architecture include
+#include "ITimeFilter.mqh"
 
 //---------------------------- Inputs (reusable) ---------------------
 // ATTENTION DEVELOPPEUR : Pour utiliser ce TimeMinuteFilter dans votre EA, 
@@ -157,17 +159,16 @@ bool IsTimeMinuteAllowed(bool useFilter, string timeMinuteRanges)
 //+------------------------------------------------------------------+
 //| Classe de gestion des filtres par plages heure:minute           |
 //+------------------------------------------------------------------+
-class TimeMinuteFilter
+class TimeMinuteFilter : public ITimeFilter
 {
 private:
    // Configuration
-   bool              m_useFilter;
+   bool              m_enabled;
    string            m_timeMinuteRanges;    // Ex: "8:30-10:45;16:00;20:15-22:30"
    
    // Logging (anti-spam)
    int               m_lastLoggedHour;
    int               m_lastLoggedMinute;
-   string            m_logPrefix;
    string            m_lastBlockReason;
 
 public:
@@ -176,12 +177,25 @@ public:
    //+------------------------------------------------------------------+
    TimeMinuteFilter()
    {
-      m_useFilter = false;
+      m_enabled = false;
       m_timeMinuteRanges = "";
       m_lastLoggedHour = -1;
       m_lastLoggedMinute = -1;
       m_logPrefix = "[TimeMinuteFilter] ";
+      m_lastLoggedState = true;
+      m_lastLogTime = 0;
       m_lastBlockReason = "";
+   }
+
+   // Nouvelle initialisation cohérente avec les autres filtres
+   bool Initialize(bool enabled, string timeMinuteRanges)
+   {
+      m_enabled = enabled;
+      m_timeMinuteRanges = timeMinuteRanges;
+      if(!enabled || timeMinuteRanges == "" || timeMinuteRanges == " ")
+         return true;
+      Print(m_logPrefix + "Initialized with ranges: " + timeMinuteRanges);
+      return true;
    }
 
    //+------------------------------------------------------------------+
@@ -189,7 +203,7 @@ public:
    //+------------------------------------------------------------------+
    void SetFilter(bool enabled, string ranges)
    {
-      m_useFilter = enabled;
+      m_enabled = enabled;
       m_timeMinuteRanges = ranges;
    }
 
@@ -201,16 +215,16 @@ public:
    // Chargement rapide depuis une configuration simple
    void InitFromInputs(bool useFilter, string timeMinuteRanges)
    {
-      m_useFilter = useFilter;
+      m_enabled = useFilter;
       m_timeMinuteRanges = timeMinuteRanges;
    }
 
    //+------------------------------------------------------------------+
    //| Vérifications principales                                       |
    //+------------------------------------------------------------------+
-   bool IsTradingAllowed()
+   virtual bool IsTradingAllowed() override
    {
-      if(!m_useFilter) return true;
+      if(!m_enabled) return true;
 
       MqlDateTime dt;
    TimeToStruct(TimeGMT(), dt);
@@ -221,8 +235,7 @@ public:
       // Logging anti-spam : une fois par minute seulement
       if(!allowed && (m_lastLoggedHour != dt.hour || m_lastLoggedMinute != dt.min))
       {
-         Print(m_logPrefix + "Heure non autorisée: ", dt.hour, ":", 
-               (dt.min < 10 ? "0" : ""), dt.min, " | Ranges: ", m_timeMinuteRanges);
+         LogIfChanged(allowed, StringFormat("Time not in allowed ranges at %02d:%02d", dt.hour, dt.min));
          m_lastLoggedHour = dt.hour;
          m_lastLoggedMinute = dt.min;
          m_lastBlockReason = "Time not in allowed ranges";
@@ -233,6 +246,24 @@ public:
       }
 
       return allowed;
+   }
+
+   // ITimeFilter overrides
+   virtual bool IsEnabled() const override
+   {
+      return m_enabled;
+   }
+
+   virtual string GetDescription() const override
+   {
+      if(!m_enabled) return "TimeMinute: Disabled";
+      return "TimeMinute: " + m_timeMinuteRanges;
+   }
+
+   virtual string GetStatusMessage() const override
+   {
+      if(!m_enabled) return "TimeMinuteFilter: OFF";
+      return "TimeMinuteFilter: ON [" + m_timeMinuteRanges + "]";
    }
 
    //+------------------------------------------------------------------+
@@ -254,7 +285,7 @@ public:
    // Représentation humaine des plages configurées
    string Describe() const
    {
-      if(!m_useFilter) return "Time minute filter disabled";
+      if(!m_enabled) return "Time minute filter disabled";
       return "Time ranges: " + m_timeMinuteRanges;
    }
 
@@ -264,16 +295,12 @@ public:
       return m_timeMinuteRanges;
    }
 
-   // Vérifier si le filtre est activé
-   bool IsEnabled() const
-   {
-      return m_useFilter;
-   }
+   // (IsEnabled override already defined above)
 
    // Vérifier le statut actuel (version const)
    bool IsCurrentlyActive() const
    {
-      if(!m_useFilter) return true;
+      if(!m_enabled) return true;
 
       MqlDateTime dt;
    TimeToStruct(TimeGMT(), dt);
@@ -287,7 +314,7 @@ public:
    // Info pour affichage graphique
    string GetInfo() const
    {
-      if(!m_useFilter) return "TimeMinuteFilter: OFF";
+      if(!m_enabled) return "TimeMinuteFilter: OFF";
       
       // Vérifier le statut sans modifier l'objet
       bool isActive = IsCurrentlyActive();
