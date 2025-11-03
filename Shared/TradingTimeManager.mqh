@@ -332,12 +332,24 @@ public:
    }
 
    // Ajouter un filtre polymorphique (nouvelle architecture)
-   void AddFilter(ITimeFilter* filter)
+   bool AddFilter(ITimeFilter* filter)
    {
-      if(filter == NULL) return;
+      if(filter == NULL)
+      {
+         Print("[TradingTimeManager] ERROR: Cannot add NULL filter");
+         return false;
+      }
+      if(!filter.IsEnabled())
+      {
+         Print("[TradingTimeManager] WARNING: Filter is disabled, not adding");
+         delete filter;
+         return false;
+      }
       int sz = ArraySize(m_filters);
       ArrayResize(m_filters, sz + 1);
       m_filters[sz] = filter;
+      Print("[TradingTimeManager] ✅ Filter added: ", filter.GetDescription());
+      return true;
    }
 
    //+------------------------------------------------------------------+

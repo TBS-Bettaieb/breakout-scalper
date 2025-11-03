@@ -364,54 +364,55 @@ private:
    bool InitializeTimeManager()
    {
       m_timeManager = new TradingTimeManager(m_chartManager);
+      if(m_timeManager == NULL)
+      {
+         Logger::Error("❌ Failed to create TradingTimeManager");
+         return false;
+      }
       
-      // Utiliser le nouveau format unifié si disponible
+      // ✅ NOUVEAU SYSTÈME UNIQUEMENT - pas d'ancien Initialize()
+      
+      // Déterminer la chaîne de plage horaire à utiliser
+      string timeRangeStr = "";
       if(m_config.tradingTimeRanges != "")
       {
-         m_timeManager.Initialize(
-            true,  // useHourFilter
-            m_config.tradingTimeRanges,
-            false, // useDayFilter
-            "",    // dayRanges
-            true   // verboseLogging
-         );
-
-         // Polymorphic filter path (new architecture)
-         TimeRangeFilter* trf = new TimeRangeFilter();
-         if(trf != NULL)
-         {
-            if(trf.Initialize(true, m_config.tradingTimeRanges))
-               m_timeManager.AddFilter(trf);
-            else
-               delete trf;
-         }
+         timeRangeStr = m_config.tradingTimeRanges;
       }
-      else
+      else if(m_config.startHour != 0 || m_config.endHour != 0)
       {
-         // Fallback vers l'ancien format (rétro-compatibilité)
-         m_timeManager.Initialize(
-            (m_config.startHour != 0 || m_config.endHour != 0),
-            IntegerToString(m_config.startHour) + "-" + IntegerToString(m_config.endHour),
-            false,
-            "",
-            true
-         );
-
-         // Polymorphic filter path (new architecture) for start/end
-         if(m_config.startHour != 0 || m_config.endHour != 0)
-         {
-            string rangeStr = IntegerToString(m_config.startHour) + "-" + IntegerToString(m_config.endHour);
-            TimeRangeFilter* trf2 = new TimeRangeFilter();
-            if(trf2 != NULL)
-            {
-               if(trf2.Initialize(true, rangeStr))
-                  m_timeManager.AddFilter(trf2);
-               else
-                  delete trf2;
-            }
-         }
+         // Fallback vers l'ancien format
+         timeRangeStr = IntegerToString(m_config.startHour) + "-" + 
+                       IntegerToString(m_config.endHour);
       }
       
+      // Ajouter TimeRange Filter si configuré
+      if(timeRangeStr != "")
+      {
+         TimeRangeFilter* trf = new TimeRangeFilter();
+         if(trf == NULL)
+         {
+            Logger::Error("❌ Failed to create TimeRangeFilter");
+            return false;
+         }
+         
+         if(!trf.Initialize(true, timeRangeStr))
+         {
+            Logger::Error("❌ Invalid TimeRange format: " + timeRangeStr);
+            delete trf;
+            return false;
+         }
+         
+         if(!m_timeManager.AddFilter(trf))
+         {
+            Logger::Error("❌ Failed to add TimeRange Filter to TradingTimeManager");
+            delete trf;
+            return false;
+         }
+         
+         Logger::Info("✅ TimeRange Filter initialized: " + timeRangeStr);
+      }
+      
+      // Configuration finale
       m_timeManager.SetVerboseLogging(true);
       m_timeManager.SetAlertMessages(m_config.hourBlockMsg, m_config.dayBlockMsg, 
                                      m_config.bothBlockMsg);
