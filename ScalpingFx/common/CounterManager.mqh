@@ -15,6 +15,9 @@ private:
    int    m_sellTotalPendingStop;
    int    m_buyTotalPendingLimit;
    int    m_sellTotalPendingLimit;
+
+      // Statistiques
+    double            m_totalProfit;         // Profit total pour ce symbole
    CPositionInfo m_position;
 
 public:
@@ -22,9 +25,10 @@ public:
    {
       m_symbol    = symbol;
       m_magic     = magic;
-      m_buyTotal  = 0;
-      m_sellTotal = 0;
       m_position  = position;
+
+      Reset();
+
    }
 
    void Reset()
@@ -35,6 +39,7 @@ public:
       m_sellTotalPendingStop = 0;
       m_buyTotalPendingLimit = 0;
       m_sellTotalPendingLimit = 0;
+      m_totalProfit = 0;
    }
 
    void Recalculate()
@@ -77,6 +82,9 @@ public:
 
    int GetBuy()  { return m_buyTotal; }
    int GetSell() { return m_sellTotal; }
+   int GetTotalPositions() { return m_buyTotal + m_sellTotal; }
+   int GetTotalPendingStop() { return m_buyTotalPendingStop + m_sellTotalPendingStop; }
+   int GetTotalPendingLimit() { return m_buyTotalPendingLimit + m_sellTotalPendingLimit; }
    int GetBuyPendingStop() { return m_buyTotalPendingStop; }
    int GetSellPendingStop() { return m_sellTotalPendingStop; }
    int GetBuyPendingLimit() { return m_buyTotalPendingLimit; }
@@ -84,9 +92,10 @@ public:
 
    // Méthodes booléennes pour vérifier si un ordre peut être envoyé
    bool CanSendBuyLimitOrder() { return (m_buyTotalPendingLimit <= 0); }
-   bool CanSendBuyStopOrder()  { return (m_buyTotalPendingStop <= 0); }
    bool CanSendSellLimitOrder() { return (m_sellTotalPendingLimit <= 0); }
-   bool CanSendSellStopOrder()  { return (m_sellTotalPendingStop <= 0); }
+
+   bool CanSendBuyStopOrder()  { return (m_buyTotalPendingStop+m_sellTotalPendingLimit <= 0); }
+   bool CanSendSellStopOrder()  { return (m_sellTotalPendingStop +m_buyTotalPendingLimit <= 0); }
    
    void DisplayCounters(const long chart_id = 0, const string name = "CounterInfo", const int corner = CORNER_LEFT_UPPER)
    {
@@ -102,6 +111,48 @@ public:
       }
       string text = StringFormat("%s | BUY: %d | SELL: %d | BUY STOP: %d | SELL STOP: %d | BUY LIMIT: %d | SELL LIMIT: %d", m_symbol, m_buyTotal, m_sellTotal, m_buyTotalPendingStop, m_sellTotalPendingStop, m_buyTotalPendingLimit, m_sellTotalPendingLimit);
       ObjectSetString(chart_id, label, OBJPROP_TEXT, text);
+   }
+
+
+
+   string GetStatusInfo()
+   {
+      string status = m_symbol + ": ";
+      
+      if(m_buyTotal + m_sellTotal == 0)
+         status += "IDLE";
+      else
+      {
+         status += "ACTIVE | Pos: " + IntegerToString(m_buyTotal + m_sellTotal);
+         status += " (B:" + IntegerToString(m_buyTotal) + " S:" + IntegerToString(m_sellTotal) + ")";
+         
+         if(m_totalProfit != 0)
+         {
+            status += " | P/L: " + DoubleToString(m_totalProfit, 2);
+         }
+      }
+      
+      return status;
+   }
+
+
+
+   double GetTotalProfit()
+   {
+      m_totalProfit = 0;
+      
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         if(m_position.SelectByIndex(i))
+         {
+            if(m_position.Magic() == m_magic && m_position.Symbol() == m_symbol)
+            {
+               m_totalProfit += m_position.Profit() + m_position.Swap() + m_position.Commission();
+            }
+         }
+      }
+      
+      return m_totalProfit;
    }
 };
 

@@ -35,9 +35,7 @@ private:
    // Gestion des barres
    datetime          m_lastBarTime;         // Dernière barre traitée
    
-   // Compteurs de positions/ordres
-   int               m_buyTotal;            // Nombre positions/ordres BUY
-   int               m_sellTotal;           // Nombre positions/ordres SELL
+
   CounterManager    m_counterMgr;          // Manager des compteurs BUY/SELL
    
    // Paramètres de trading
@@ -71,8 +69,7 @@ private:
    };
    PositionTrailing  m_positionTrailings[];
    
-   // Statistiques
-   double            m_totalProfit;         // Profit total pour ce symbole
+
    
    // 🆕 Risk Multiplier
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
@@ -140,9 +137,7 @@ public:
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
       m_lastBarTime = iTime(symbol, timeframe, 0);  
-      m_buyTotal = 0;
-      m_sellTotal = 0;
-      m_totalProfit = 0;
+      
       m_currentRiskMultiplier = 1.0;
       
       // 🆕 AJOUTER APRÈS les autres initialisations:
@@ -236,7 +231,7 @@ public:
       CheckForNewPositions();
       
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
-      if(m_buyTotal <= 0)
+      if(m_counterMgr.CanSendBuyStopOrder())
       {
          // Acheter sur cassure du dernier swing high (BREAKOUT par défaut)
          double high = m_swingAnalyzer.FindHigh();
@@ -246,7 +241,7 @@ public:
          }
       }
       
-      if(m_sellTotal <= 0)
+      if(m_counterMgr.CanSendSellStopOrder())
       {
          // Vendre sur cassure du dernier swing low (BREAKOUT par défaut)
          double low = m_swingAnalyzer.FindLow();
@@ -561,22 +556,7 @@ public:
    //+------------------------------------------------------------------+
    string GetStatusInfo()
    {
-      string status = m_symbol + ": ";
-      
-      if(m_buyTotal + m_sellTotal == 0)
-         status += "IDLE";
-      else
-      {
-         status += "ACTIVE | Pos: " + IntegerToString(m_buyTotal + m_sellTotal);
-         status += " (B:" + IntegerToString(m_buyTotal) + " S:" + IntegerToString(m_sellTotal) + ")";
-         
-         if(m_totalProfit != 0)
-         {
-            status += " | P/L: " + DoubleToString(m_totalProfit, 2);
-         }
-      }
-      
-      return status;
+     return m_counterMgr.GetStatusInfo();
    }
    
    //+------------------------------------------------------------------+
@@ -584,20 +564,8 @@ public:
    //+------------------------------------------------------------------+
    double GetTotalProfit()
    {
-      m_totalProfit = 0;
-      
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
-      {
-         if(m_position.SelectByIndex(i))
-         {
-            if(m_position.Magic() == m_magicNumber && m_position.Symbol() == m_symbol)
-            {
-               m_totalProfit += m_position.Profit() + m_position.Swap() + m_position.Commission();
-            }
-         }
-      }
-      
-      return m_totalProfit;
+          
+      return m_counterMgr.GetTotalProfit();
    }
    
    //+------------------------------------------------------------------+
@@ -605,7 +573,7 @@ public:
    //+------------------------------------------------------------------+
    int GetTotalPositions()
    {
-      return m_buyTotal + m_sellTotal;
+      return m_counterMgr.GetTotalPositions();
    }
    
    //+------------------------------------------------------------------+
@@ -1087,8 +1055,6 @@ private:
    void UpdateCounters()
    {
       m_counterMgr.Recalculate();
-      m_buyTotal  = m_counterMgr.GetBuy();
-      m_sellTotal = m_counterMgr.GetSell();
    }
    
 };
