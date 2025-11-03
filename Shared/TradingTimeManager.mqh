@@ -209,6 +209,11 @@ public:
       
       m_timeRangeFilter = new TimeRangeFilter();
       m_hourRanges = hourRanges;
+      if(m_timeRangeFilter != NULL)
+      {
+         if(m_timeRangeFilter.Initialize(true, hourRanges))
+            AddFilter(m_timeRangeFilter);
+      }
       
       if(m_verboseLogging) Print(m_logPrefix + "TimeRange Filter: ENABLED (" + hourRanges + ")");
    }
@@ -228,6 +233,11 @@ public:
       
       m_dayRangeFilter = new DayRangeFilter();
       m_dayRanges = dayRanges;
+      if(m_dayRangeFilter != NULL)
+      {
+         if(m_dayRangeFilter.Initialize(true, dayRanges))
+            AddFilter(m_dayRangeFilter);
+      }
       
       if(m_verboseLogging) Print(m_logPrefix + "DayRange Filter: ENABLED (" + dayRanges + ")");
    }
@@ -249,6 +259,11 @@ public:
       m_sessionFilter = new SessionFilter();
       m_session = session;
       m_avoidOpeningMinutes = avoidOpeningMinutes;
+      if(m_sessionFilter != NULL)
+      {
+         m_sessionFilter.SetFilter(true, session, avoidOpeningMinutes);
+         AddFilter(m_sessionFilter);
+      }
       
       if(m_verboseLogging) Print(m_logPrefix + "Session Filter: ENABLED (Session: " + IntegerToString(session) + ", Avoid: " + IntegerToString(avoidOpeningMinutes) + "min)");
    }
@@ -280,6 +295,11 @@ public:
       m_newsStartAfter = startAfter;
       m_newsDaysLookup = daysLookup;
       m_newsSeparator = separator;
+      if(m_newsFilter != NULL)
+      {
+         m_newsFilter.InitFromInputs(true, currencies, keywords, stopBefore, startAfter, daysLookup, separator);
+         AddFilter(m_newsFilter);
+      }
       
       if(m_verboseLogging) Print(m_logPrefix + "News Filter: ENABLED (" + currencies + ", " + keywords + ")");
    }
