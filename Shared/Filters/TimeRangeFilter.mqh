@@ -49,7 +49,7 @@
 //+------------------------------------------------------------------+
 int CurrentHour()
 {
-   MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); return dt.hour;
+   MqlDateTime dt; TimeToStruct(TimeGMT(), dt); return dt.hour;
 }
 
 //+------------------------------------------------------------------+
@@ -187,7 +187,7 @@ public:
       bool allowed;
       if(useMinuteFormat)
       {
-         MqlDateTime dt; TimeToStruct(TimeCurrent(), dt);
+         MqlDateTime dt; TimeToStruct(TimeGMT(), dt);
          int currentMinutes = dt.hour * 60 + dt.min;
          allowed = IsTimeMinuteAllowedUnified(m_hourRanges, currentMinutes);
       }
@@ -216,7 +216,7 @@ public:
    //+------------------------------------------------------------------+
    int CurrentHour() const
    {
-      MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); return dt.hour;
+      MqlDateTime dt; TimeToStruct(TimeGMT(), dt); return dt.hour;
    }
 
    // Raison du blocage lors du dernier appel à IsTradingAllowed()
@@ -255,7 +255,7 @@ public:
       bool allowed;
       if(useMinuteFormat)
       {
-         MqlDateTime dt; TimeToStruct(TimeCurrent(), dt);
+         MqlDateTime dt; TimeToStruct(TimeGMT(), dt);
          int currentMinutes = dt.hour * 60 + dt.min;
          allowed = IsTimeMinuteAllowedUnified(m_hourRanges, currentMinutes);
       }

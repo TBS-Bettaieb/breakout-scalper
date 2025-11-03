@@ -167,8 +167,7 @@ int OnInit()
       Logger::Info("      Magic: " + IntegerToString(config.baseMagic));
       Logger::Info("      Risk: " + DoubleToString(config.riskPercent, 2) + "%");
       Logger::Info("      TP/SL: " + IntegerToString(config.tpPoints) + "/" + IntegerToString(config.slPoints) + " pts");
-      string modeStr = (config.strategyMode == STRATEGY_BREAKOUT ? "BREAKOUT" : "REVERSION");
-      Logger::Info("      Mode: " + modeStr);
+      Logger::Info("      Mode: BREAKOUT");
       Logger::Info("───────────────────────────────────────────────────");
    }
    

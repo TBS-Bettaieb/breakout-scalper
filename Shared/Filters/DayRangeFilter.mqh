@@ -50,7 +50,7 @@
 //+------------------------------------------------------------------+
 int CurrentWeekDay()
 {
-   MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); return dt.day_of_week; // 0..6
+   MqlDateTime dt; TimeToStruct(TimeGMT(), dt); return dt.day_of_week; // 0..6
 }
 
 //+------------------------------------------------------------------+
@@ -221,7 +221,7 @@ public:
    //+------------------------------------------------------------------+
    int CurrentWeekDay()
    {
-      MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); return dt.day_of_week; // 0..6
+      MqlDateTime dt; TimeToStruct(TimeGMT(), dt); return dt.day_of_week; // 0..6
    }
 
    // Obtenir le nom du jour actuel

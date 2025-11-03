@@ -13,6 +13,10 @@
 #include "ForexSwingAnalyzer.mqh"
 #include "ForexTrendlineManager.mqh"
 #include "../../Shared/TrailingTP_System.mqh"
+#include "orderManager.mqh"
+#include "Filters/FVGTradeFilter.mqh"
+
+#include "CounterManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -31,9 +35,8 @@ private:
    // Gestion des barres
    datetime          m_lastBarTime;         // Dernière barre traitée
    
-   // Compteurs de positions/ordres
-   int               m_buyTotal;            // Nombre positions/ordres BUY
-   int               m_sellTotal;           // Nombre positions/ordres SELL
+
+  CounterManager    m_counterMgr;          // Manager des compteurs BUY/SELL
    
    // Paramètres de trading
    double            m_riskPercent;         // Risque par symbole
@@ -47,7 +50,6 @@ private:
    int               m_slippagePoints;      // NEW: Slippage tolerance
    int               m_entryOffsetPoints;   // NEW: Entry offset for Stop orders
    string            m_tradeComment;        // Commentaire des trades
-   ENUM_STRATEGY_MODE m_strategyMode; // Mode de stratégie (Breakout/Reversion)
    
    // Objets de trading
    CTrade            m_trade;               // Objet de trading
@@ -67,8 +69,7 @@ private:
    };
    PositionTrailing  m_positionTrailings[];
    
-   // Statistiques
-   double            m_totalProfit;         // Profit total pour ce symbole
+
    
    // 🆕 Risk Multiplier
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
@@ -86,6 +87,10 @@ private:
    bool              m_useDynamicTSLTrigger;
    double            m_tslCostMultiplier;
    int               m_tslMinTriggerPoints;
+   
+   // 🆕 FVG Filter
+   bool              m_useFvgFilter;
+   FVGTradeFilter    m_fvgFilter;           // Filtre FVG pour validation des trades
    
 public:
    //+------------------------------------------------------------------+
@@ -105,17 +110,18 @@ public:
                      int slippagePoints,
                      int entryOffsetPoints,
                      string tradeComment,
-                     ENUM_STRATEGY_MODE strategyMode,
                      bool useTrailingTP = false,
                      ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED,
                      string customTPLevels = "",
                      bool useDynamicTSLTrigger = true,      // 🆕 AJOUTER
                      double tslCostMultiplier = 1.5,        // 🆕 AJOUTER
-                     int tslMinTriggerPoints = 50)          // 🆕 AJOUTER
+                     int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
+                     bool useFvgFilter = false)             // 🆕 FVG FILTER
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_timeframe = timeframe;
+      m_counterMgr.Init(m_symbol, m_magicNumber, m_position);
       m_riskPercent = riskPercent;
       m_tpPoints = tpPoints;
       m_slPoints = slPoints;
@@ -127,14 +133,11 @@ public:
       m_slippagePoints = slippagePoints;
       m_entryOffsetPoints = entryOffsetPoints;
       m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
-      m_strategyMode = strategyMode;
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
       m_lastBarTime = iTime(symbol, timeframe, 0);  
-      m_buyTotal = 0;
-      m_sellTotal = 0;
-      m_totalProfit = 0;
+      
       m_currentRiskMultiplier = 1.0;
       
       // 🆕 AJOUTER APRÈS les autres initialisations:
@@ -142,6 +145,10 @@ public:
       m_tslCostMultiplier = tslCostMultiplier;
       m_tslMinTriggerPoints = tslMinTriggerPoints;
       ArrayResize(m_positionCosts, 0);
+      
+      // 🆕 FVG Filter
+      m_useFvgFilter = useFvgFilter;
+      m_fvgFilter.Init(m_symbol, m_timeframe, m_useFvgFilter);
       
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
@@ -175,7 +182,8 @@ public:
       
       Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber,
             " | Dynamic TSL: ", (m_useDynamicTSLTrigger ? "ON" : "OFF"),
-            " | Cost Multiplier: ", DoubleToString(m_tslCostMultiplier, 1));
+            " | Cost Multiplier: ", DoubleToString(m_tslCostMultiplier, 1),
+            " | FVG Filter: ", (m_useFvgFilter ? "ON" : "OFF"));
    }
    
    //+------------------------------------------------------------------+
@@ -206,9 +214,14 @@ public:
    //+------------------------------------------------------------------+
    void OnTick()
    {
+
+      CheckFvgDisqualifier();
+
       // Vérifier si c'est une nouvelle barre
       if(!IsNewBar()) return;
       
+
+      m_fvgFilter.OnNewBar();
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
       // Mettre à jour les compteurs
@@ -218,50 +231,115 @@ public:
       CheckForNewPositions();
       
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
-      if(m_buyTotal <= 0)
+      if(m_counterMgr.CanSendBuyStopOrder())
       {
-         if(m_strategyMode == STRATEGY_BREAKOUT)
+         // Acheter sur cassure du dernier swing high (BREAKOUT par défaut)
+         double high = m_swingAnalyzer.FindHigh();
+         if(high > 0)
          {
-            // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
-            double high = m_swingAnalyzer.FindHigh();
-            if(high > 0)
-            {
-               SendBuyOrder(high);
-            }
-         }
-         else if(m_strategyMode == STRATEGY_REVERSION)
-         {
-            // Mode REVERSION : acheter quand le prix TOUCHE un swing low et rebondit (contre-tendance)
-            double low = m_swingAnalyzer.FindLow();
-            if(low > 0)
-            {
-               SendBuyOrder(low);
-            }
+            SendBuyOrder(high);
          }
       }
       
-      if(m_sellTotal <= 0)
+      if(m_counterMgr.CanSendSellStopOrder())
       {
-         if(m_strategyMode == STRATEGY_BREAKOUT)
+         // Vendre sur cassure du dernier swing low (BREAKOUT par défaut)
+         double low = m_swingAnalyzer.FindLow();
+         if(low > 0)
          {
-            // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
-            double low = m_swingAnalyzer.FindLow();
-            if(low > 0)
-            {
-               SendSellOrder(low);
-            }
-         }
-         else if(m_strategyMode == STRATEGY_REVERSION)
-         {
-            // Mode REVERSION : vendre quand le prix TOUCHE un swing high et redescend (contre-tendance)
-            double high = m_swingAnalyzer.FindHigh();
-            if(high > 0)
-            {
-               SendSellOrder(high);
-            }
+            SendSellOrder(low);
          }
       }
    }
+
+      //+------------------------------------------------------------------+
+   //| Vérifier et annuler les ordres disqualifiés par le filtre FVG    |
+   //+------------------------------------------------------------------+
+   bool CheckFvgDisqualifier()
+   {
+      if(!m_fvgFilter.GetEnabled())
+         return false;
+
+
+      // Utiliser OrderManager::FindTicketViolatingPriceTolerance pour trouver un ordre dépassant le priceTolerance
+      ulong violatingTicket = 0;
+      bool isBuy = false;
+      double priceTolerance = SymbolInfoDouble(m_symbol, SYMBOL_BID) * 0.0001; // 0.01% tolerance
+      double orderPrice = 0.0;
+      double orderSL = 0.0;
+      if(FindTicketViolatingPriceTolerance(priceTolerance, violatingTicket, isBuy, orderPrice, orderSL))
+      {
+         
+            bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
+
+            if(!isAllowed)
+            {
+               if(CancelOrderById(violatingTicket))
+               {
+               }
+               else
+               {
+                  Logger::Error(StringFormat("❌ Erreur suppression ordre #%I64u | Erreur: %d", violatingTicket, GetLastError()));
+               }
+
+               
+            }
+
+
+            if(!isAllowed)
+            {
+               OrderManager::SendLimitOrder(BuildOrderParams(),!isBuy, orderPrice,"FVG");
+            }
+            
+         
+      }
+			return false;
+   }
+
+   
+     //+------------------------------------------------------------------+
+  //| Retourner un ticket violant priceTolerance (+ sens isBuy)        |
+  //+------------------------------------------------------------------+
+  // Modifié pour retourner également le StopLoss de l'ordre (slOrder)
+  bool FindTicketViolatingPriceTolerance(const double priceTolerance, ulong &ticket, bool &isBuy, double &orderPrice, double &slOrder)
+  {
+   ticket = 0;
+   isBuy = false;
+   slOrder = 0.0;
+   orderPrice=0.0;
+   bool shouldCheckFVG = false;
+   double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong t = OrderGetTicket(i);
+      if(!OrderSelect(t)) continue;
+      if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
+      if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
+      orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+      slOrder = OrderGetDouble(ORDER_SL);
+      long orderType = OrderGetInteger(ORDER_TYPE);
+      double distanceToPrice = MathAbs(currentPrice - orderPrice);
+
+      if(distanceToPrice >= priceTolerance)
+        {
+         ticket = t;
+               if(orderType == ORDER_TYPE_BUY_STOP)
+              {
+               isBuy = true;
+               shouldCheckFVG = true;
+              }
+             else if(orderType == ORDER_TYPE_SELL_STOP)
+              {
+               isBuy = false;
+               shouldCheckFVG = true;
+              }
+              if(shouldCheckFVG)
+               return true;
+        }
+     }
+   return shouldCheckFVG;
+  }
+
    //+------------------------------------------------------------------+
    //| 🆕 Trailing Stop Loss DYNAMIQUE basé sur les coûts réels        |
    //+------------------------------------------------------------------+
@@ -400,6 +478,12 @@ public:
       }
    }
    
+   bool CancelOrderById(const ulong ticket)
+   {
+      return OrderManager::CancelOrderById(BuildOrderParams(), ticket);
+   }
+
+
    //+------------------------------------------------------------------+
    //| Fermer toutes les positions et ordres pour ce symbole          |
    //+------------------------------------------------------------------+
@@ -472,22 +556,7 @@ public:
    //+------------------------------------------------------------------+
    string GetStatusInfo()
    {
-      string status = m_symbol + ": ";
-      
-      if(m_buyTotal + m_sellTotal == 0)
-         status += "IDLE";
-      else
-      {
-         status += "ACTIVE | Pos: " + IntegerToString(m_buyTotal + m_sellTotal);
-         status += " (B:" + IntegerToString(m_buyTotal) + " S:" + IntegerToString(m_sellTotal) + ")";
-         
-         if(m_totalProfit != 0)
-         {
-            status += " | P/L: " + DoubleToString(m_totalProfit, 2);
-         }
-      }
-      
-      return status;
+     return m_counterMgr.GetStatusInfo();
    }
    
    //+------------------------------------------------------------------+
@@ -495,20 +564,8 @@ public:
    //+------------------------------------------------------------------+
    double GetTotalProfit()
    {
-      m_totalProfit = 0;
-      
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
-      {
-         if(m_position.SelectByIndex(i))
-         {
-            if(m_position.Magic() == m_magicNumber && m_position.Symbol() == m_symbol)
-            {
-               m_totalProfit += m_position.Profit() + m_position.Swap() + m_position.Commission();
-            }
-         }
-      }
-      
-      return m_totalProfit;
+          
+      return m_counterMgr.GetTotalProfit();
    }
    
    //+------------------------------------------------------------------+
@@ -516,7 +573,7 @@ public:
    //+------------------------------------------------------------------+
    int GetTotalPositions()
    {
-      return m_buyTotal + m_sellTotal;
+      return m_counterMgr.GetTotalPositions();
    }
    
    //+------------------------------------------------------------------+
@@ -558,7 +615,7 @@ public:
           m_position.Volume()
       );
       
-      double spreadPoints = SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
+      double spreadPoints = (double)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
       
       double swap = PositionGetDouble(POSITION_SWAP);
       double swapPoints = 0;
@@ -936,80 +993,32 @@ private:
    //+------------------------------------------------------------------+
    //| Calculer la taille du lot basée sur le risque                   |
    //+------------------------------------------------------------------+
-   double CalcLots(double slPoints)
+   OrderParams BuildOrderParams()
    {
-      double effectiveRisk = m_riskPercent * m_currentRiskMultiplier; // 🆕
-      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * effectiveRisk / 100;
-      
-      double ticksize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
-      double tickvalue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
-      double lotstep = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP);
-      double maxvolume = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX);
-      double minvolume = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN);
-      double volumelimit = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_LIMIT);
-      
-      double moneyPerLotstep = slPoints / ticksize * tickvalue * lotstep;
-      double lots = MathFloor(risk / moneyPerLotstep) * lotstep;
-      
-      if(volumelimit != 0) lots = MathMin(lots, volumelimit);
-      if(maxvolume != 0) lots = MathMin(lots, SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX));
-      if(minvolume != 0) lots = MathMax(lots, SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN));
-      lots = NormalizeDouble(lots, 2);
-      
-      return lots;
+      return OrderManager::CreateParams(
+         m_symbol,
+         m_timeframe,
+			m_magicNumber,
+         m_point,
+         m_tpPoints,
+         m_slPoints,
+         m_entryOffsetPoints,
+         m_orderDistPoints,
+         m_expirationBars,
+         m_riskPercent,
+         m_currentRiskMultiplier,
+         m_tradeComment,
+         m_trade
+      );
    }
+   
    
    //+------------------------------------------------------------------+
    //| Envoyer un ordre Buy (Stop ou Limit selon la stratégie)         |
    //+------------------------------------------------------------------+
    void SendBuyOrder(double entry)
    {
-      double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
-      
-      double tp = entry + m_tpPoints * m_point;
-      double sl = entry - m_slPoints * m_point;
-      
-      double lots = 0.01;
-      if(m_riskPercent > 0) lots = CalcLots(entry - sl);
-      
-      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
-      
-      if(m_strategyMode == STRATEGY_BREAKOUT)
-      {
-         // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
-         double adjustedEntry = entry - (m_entryOffsetPoints * m_point);  // NEW: Apply offset
-         double adjustedTP = adjustedEntry + m_tpPoints * m_point;        // NEW: Recalc TP
-         double adjustedSL = adjustedEntry - m_slPoints * m_point;        // NEW: Recalc SL
-         
-         // Recalculate lots with adjusted SL for proper risk calculation
-         if(m_riskPercent > 0) lots = CalcLots(adjustedEntry - adjustedSL);
-         
-         if(ask > adjustedEntry - m_orderDistPoints * m_point) return;
-         
-         if(m_trade.BuyStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Buy Stop order sent for ", m_symbol, " at ", adjustedEntry, 
-                  " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
-         }
-         else
-         {
-            Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
-         }
-      }
-      else if(m_strategyMode == STRATEGY_REVERSION)
-      {
-         // Mode REVERSION : utiliser BuyLimit (attendre que le prix touche le niveau)
-         if(ask < entry + m_orderDistPoints * m_point) return;
-         
-         if(m_trade.BuyLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Buy Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-         }
-         else
-         {
-            Print("✗ Failed to send Buy Limit order for ", m_symbol, " | Error: ", GetLastError());
-         }
-      }
+      OrderManager::SendBuyOrder(BuildOrderParams(), entry);
    }
    
    //+------------------------------------------------------------------+
@@ -1017,52 +1026,7 @@ private:
    //+------------------------------------------------------------------+
    void SendSellOrder(double entry)
    {
-      double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-      
-      double tp = entry - m_tpPoints * m_point;
-      double sl = entry + m_slPoints * m_point;
-      
-      double lots = 0.01;
-      if(m_riskPercent > 0) lots = CalcLots(sl - entry);
-      
-      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
-      
-      if(m_strategyMode == STRATEGY_BREAKOUT)
-      {
-         // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
-         double adjustedEntry = entry + (m_entryOffsetPoints * m_point);  // NEW: Apply offset
-         double adjustedTP = adjustedEntry - m_tpPoints * m_point;        // NEW: Recalc TP
-         double adjustedSL = adjustedEntry + m_slPoints * m_point;        // NEW: Recalc SL
-         
-         // Recalculate lots with adjusted SL for proper risk calculation
-         if(m_riskPercent > 0) lots = CalcLots(adjustedSL - adjustedEntry);
-         
-         if(bid < adjustedEntry + m_orderDistPoints * m_point) return;
-         
-         if(m_trade.SellStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Sell Stop order sent for ", m_symbol, " at ", adjustedEntry,
-                  " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
-         }
-         else
-         {
-            Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
-         }
-      }
-      else if(m_strategyMode == STRATEGY_REVERSION)
-      {
-         // Mode REVERSION : utiliser SellLimit (attendre que le prix touche le niveau)
-         if(bid > entry - m_orderDistPoints * m_point) return;
-         
-         if(m_trade.SellLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Sell Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-         }
-         else
-         {
-            Print("✗ Failed to send Sell Limit order for ", m_symbol, " | Error: ", GetLastError());
-         }
-      }
+      OrderManager::SendSellOrder(BuildOrderParams(), entry);
    }
    
    //+------------------------------------------------------------------+
@@ -1090,35 +1054,7 @@ private:
    //+------------------------------------------------------------------+
    void UpdateCounters()
    {
-      m_buyTotal = 0;
-      m_sellTotal = 0;
-      
-      // Compter les positions
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
-      {
-         if(m_position.SelectByIndex(i))
-         {
-            if(m_position.Symbol() == m_symbol && m_position.Magic() == m_magicNumber)
-            {
-               if(m_position.PositionType() == POSITION_TYPE_BUY) m_buyTotal++;
-               if(m_position.PositionType() == POSITION_TYPE_SELL) m_sellTotal++;
-            }
-         }
-      }
-      
-      // Compter les ordres en attente
-      for(int i = OrdersTotal() - 1; i >= 0; i--)
-      {
-         ulong ticket = OrderGetTicket(i);
-         if(OrderSelect(ticket))
-         {
-            if(OrderGetString(ORDER_SYMBOL) == m_symbol && OrderGetInteger(ORDER_MAGIC) == m_magicNumber)
-            {
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP) m_buyTotal++;
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP) m_sellTotal++;
-            }
-         }
-      }
+      m_counterMgr.Recalculate();
    }
    
 };

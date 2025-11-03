@@ -34,7 +34,6 @@ struct BotConfig
    int               startHour;
    int               endHour;
    string            tradingTimeRanges;  // Format unifié: "08:30-10:45; 15:30-18:00"
-   ENUM_STRATEGY_MODE strategyMode;
    int               barsN;
    int               expirationBars;
    int               orderDistPoints;
@@ -66,6 +65,9 @@ struct BotConfig
    int               newsLookupDays;
    ENUM_SEPARATOR    newsSeparator;
    string            newsBlockMsg;
+   
+   // 🆕 FVG FILTER
+   bool              useFvgFilter;
    
    // LOGGING
    ENUM_LOG_LEVEL    logLevel;
