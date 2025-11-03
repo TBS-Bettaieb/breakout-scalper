@@ -24,6 +24,8 @@
 //| - SESSION_ALL : 24/7 (toujours autorisé)                        |
 //+------------------------------------------------------------------+
 #property strict
+// New architecture include
+#include "ITimeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Énumération des sessions de trading                              |
@@ -196,7 +198,7 @@ bool IsSessionAllowedCustom(ENUM_TRADING_SESSION session, int avoidMinutes)
 //+------------------------------------------------------------------+
 //| Classe de gestion des filtres par session                       |
 //+------------------------------------------------------------------+
-class SessionFilter
+class SessionFilter : public ITimeFilter
 {
 private:
    // Configuration
@@ -207,7 +209,6 @@ private:
    // Logging (anti-spam)
    int                     m_lastLoggedHour;
    int                     m_lastLoggedMinute;
-   string                  m_logPrefix;
    string                  m_lastBlockReason;
 
    // Noms des sessions pour l'affichage
@@ -225,6 +226,8 @@ public:
       m_lastLoggedHour = -1;
       m_lastLoggedMinute = -1;
       m_logPrefix = "[SessionFilter] ";
+      m_lastLoggedState = true;
+      m_lastLogTime = 0;
       m_lastBlockReason = "";
       
       // Initialiser les noms des sessions si pas encore fait
@@ -271,7 +274,7 @@ public:
    //+------------------------------------------------------------------+
    //| Vérifications principales                                       |
    //+------------------------------------------------------------------+
-   bool IsTradingAllowed()
+   bool IsTradingAllowed() override
    {
       if(!m_useFilter) return true;
 
@@ -285,32 +288,22 @@ public:
       // Vérifier si on est dans la session autorisée
       if(!IsInSessionRangeGlobal(dt.hour, dt.min, m_allowedSession))
       {
-         // Logging anti-spam : une fois par minute seulement
-         if(m_lastLoggedHour != dt.hour || m_lastLoggedMinute != dt.min)
-         {
-            string sessionName = GetSessionName(m_allowedSession);
-            Print(m_logPrefix + "Session non autorisée: ", sessionName, " | Heure actuelle: ", 
-                  dt.hour, ":", (dt.min < 10 ? "0" : ""), dt.min);
-            m_lastLoggedHour = dt.hour;
-            m_lastLoggedMinute = dt.min;
-            m_lastBlockReason = "Not in allowed session";
-         }
+         string sessionName = GetSessionName(m_allowedSession);
+         LogIfChanged(false, StringFormat("Session blocked: %s at %02d:%02d", sessionName, dt.hour, dt.min));
+         m_lastLoggedHour = dt.hour;
+         m_lastLoggedMinute = dt.min;
+         m_lastBlockReason = "Not in allowed session";
          return false;
       }
       
       // Vérifier si on évite les minutes d'ouverture
       if(IsAvoidingOpeningGlobal(dt.hour, dt.min, m_allowedSession, m_avoidOpeningMinutes))
       {
-         // Logging anti-spam : une fois par minute seulement
-         if(m_lastLoggedHour != dt.hour || m_lastLoggedMinute != dt.min)
-         {
-            string sessionName = GetSessionName(m_allowedSession);
-            Print(m_logPrefix + "Évitement ouverture: ", sessionName, " | Heure actuelle: ", 
-                  dt.hour, ":", (dt.min < 10 ? "0" : ""), dt.min, " (éviter ", m_avoidOpeningMinutes, " min)");
-            m_lastLoggedHour = dt.hour;
-            m_lastLoggedMinute = dt.min;
-            m_lastBlockReason = "Avoiding opening minutes";
-         }
+         string sessionName = GetSessionName(m_allowedSession);
+         LogIfChanged(false, StringFormat("Avoiding opening: %s at %02d:%02d (avoid %d min)", sessionName, dt.hour, dt.min, m_avoidOpeningMinutes));
+         m_lastLoggedHour = dt.hour;
+         m_lastLoggedMinute = dt.min;
+         m_lastBlockReason = "Avoiding opening minutes";
          return false;
       }
       
@@ -394,6 +387,18 @@ public:
    bool IsEnabled() const
    {
       return m_useFilter;
+   }
+
+   virtual string GetDescription() const override
+   {
+      if(!m_useFilter) return "Session: Disabled";
+      return "Session: " + GetSessionName(m_allowedSession) + ", avoid " + IntegerToString(m_avoidOpeningMinutes) + " min";
+   }
+
+   virtual string GetStatusMessage() const override
+   {
+      if(!m_useFilter) return "SessionFilter: OFF";
+      return "SessionFilter: ON [" + GetSessionName(m_allowedSession) + "]";
    }
 
 private:
