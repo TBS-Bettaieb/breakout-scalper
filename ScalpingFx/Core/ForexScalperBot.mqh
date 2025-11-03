@@ -31,7 +31,6 @@ private:
    string            m_symbols[];
    int               m_totalSymbols;
    int               m_tickCount;
-   int               m_detailUpdateCount;
    
 public:
    //--- Constructor
@@ -44,7 +43,6 @@ public:
       m_newsFilterManager = NULL;
       m_totalSymbols = 0;
       m_tickCount = 0;
-      m_detailUpdateCount = 0;
    }
    
    //--- Destructor
@@ -334,6 +332,15 @@ private:
          if(m_symbolTraders[i] == NULL)
          {
             Logger::Error("❌ ERROR: Failed to create ForexSymbolTrader for " + m_symbols[i]);
+            // Cleanup already created traders to avoid memory leaks
+            for(int j = 0; j < i; j++)
+            {
+               if(m_symbolTraders[j] != NULL)
+               {
+                  delete m_symbolTraders[j];
+                  m_symbolTraders[j] = NULL;
+               }
+            }
             return false;
          }
       }
@@ -593,18 +600,25 @@ private:
          statusColor = clrOrange;
       else if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.IsInActivePeriod())
          statusColor = clrYellow;
-      else if(StringFind(globalStatus, "P/L: -") >= 0)
-         statusColor = clrRed;
-      else if(StringFind(globalStatus, "P/L: ") >= 0)
-         statusColor = clrLime;
+      else
+      {
+         int plPos = StringFind(globalStatus, "P/L: ");
+         if(plPos >= 0)
+         {
+            if(plPos + 5 < StringLen(globalStatus) &&
+               StringGetCharacter(globalStatus, plPos + 5) == '-')
+               statusColor = clrRed;
+            else
+               statusColor = clrLime;
+         }
+      }
       
       // Update main label
       m_chartManager.UpdateLabelText("TopRight", globalStatus);
       m_chartManager.UpdateLabelColor("TopRight", statusColor);
       
       // Update details every 500 ticks
-      m_detailUpdateCount++;
-      if(m_detailUpdateCount % 500 == 0)
+      if(m_tickCount % 500 == 0)
       {
          UpdateDetailedInfo();
       }
@@ -613,30 +627,7 @@ private:
    //--- Update detailed information
    void UpdateDetailedInfo()
    {
-      // Suppression de l'affichage des détails des symboles
-      // On garde seulement le refresh des swing points
-      
-      // Supprimer les anciens labels de symbol details s'ils existent
-      if(m_chartManager != NULL)
-      {
-         // Supprimer spécifiquement le groupe "SymbolDetails"
-         long chartId = m_chartManager.GetChartId();
-         string prefix = m_chartManager.GetLabelPrefix();
-         string searchPattern = prefix + "_SymbolDetails_";
-         
-         int total = ObjectsTotal(chartId);
-         for(int i = total - 1; i >= 0; i--)
-         {
-            string objName = ObjectName(chartId, i);
-            if(StringFind(objName, searchPattern) == 0)
-            {
-               ObjectDelete(chartId, objName);
-            }
-         }
-         ChartRedraw(chartId);
-      }
-      
-      // Refresh swing points seulement
+      // Refresh swing points only
       for(int i = 0; i < m_totalSymbols; i++)
       {
          if(m_symbolTraders[i] != NULL)
