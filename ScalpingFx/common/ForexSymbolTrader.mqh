@@ -16,6 +16,8 @@
 #include "orderManager.mqh"
 #include "Filters/FVGTradeFilter.mqh"
 
+#include "CounterManager.mqh"
+
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
 //+------------------------------------------------------------------+
@@ -36,6 +38,7 @@ private:
    // Compteurs de positions/ordres
    int               m_buyTotal;            // Nombre positions/ordres BUY
    int               m_sellTotal;           // Nombre positions/ordres SELL
+  CounterManager    m_counterMgr;          // Manager des compteurs BUY/SELL
    
    // Paramètres de trading
    double            m_riskPercent;         // Risque par symbole
@@ -121,6 +124,7 @@ public:
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_timeframe = timeframe;
+      m_counterMgr.Init(m_symbol, m_magicNumber, m_position);
       m_riskPercent = riskPercent;
       m_tpPoints = tpPoints;
       m_slPoints = slPoints;
@@ -643,7 +647,7 @@ public:
           m_position.Volume()
       );
       
-      double spreadPoints = SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
+      double spreadPoints = (double)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
       
       double swap = PositionGetDouble(POSITION_SWAP);
       double swapPoints = 0;
@@ -1082,35 +1086,9 @@ private:
    //+------------------------------------------------------------------+
    void UpdateCounters()
    {
-      m_buyTotal = 0;
-      m_sellTotal = 0;
-      
-      // Compter les positions
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
-      {
-         if(m_position.SelectByIndex(i))
-         {
-            if(m_position.Symbol() == m_symbol && m_position.Magic() == m_magicNumber)
-            {
-               if(m_position.PositionType() == POSITION_TYPE_BUY) m_buyTotal++;
-               if(m_position.PositionType() == POSITION_TYPE_SELL) m_sellTotal++;
-            }
-         }
-      }
-      
-      // Compter les ordres en attente
-      for(int i = OrdersTotal() - 1; i >= 0; i--)
-      {
-         ulong ticket = OrderGetTicket(i);
-         if(OrderSelect(ticket))
-         {
-            if(OrderGetString(ORDER_SYMBOL) == m_symbol && OrderGetInteger(ORDER_MAGIC) == m_magicNumber)
-            {
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP) m_buyTotal++;
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP) m_sellTotal++;
-            }
-         }
-      }
+      m_counterMgr.Recalculate();
+      m_buyTotal  = m_counterMgr.GetBuy();
+      m_sellTotal = m_counterMgr.GetSell();
    }
    
 };
