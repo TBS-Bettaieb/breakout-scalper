@@ -75,7 +75,7 @@ public:
       
       // Check if we're still in the "wait after news" period (like original TrDisabledNews logic)
       if(m_isBlocked && m_lastNewsTime > 0 && 
-         TimeCurrent() - m_lastNewsTime < m_startAfterMin * 60)
+         TimeGMT() - m_lastNewsTime < m_startAfterMin * 60)
       {
          m_blockMessage = "Waiting " + IntegerToString(m_startAfterMin) +
                          "min after news before trading";
@@ -98,7 +98,7 @@ public:
       
       // Get calendar events
       MqlCalendarValue values[];
-      datetime starttime = TimeCurrent();
+      datetime starttime = TimeGMT();
       datetime endtime = starttime + 86400 * m_daysLookup;
       
       if(!CalendarValueHistory(values, starttime, endtime)) 
@@ -125,7 +125,7 @@ public:
                int secondsBefore = m_stopBeforeMin * 60;
                
                // Check if news is within our "stop before" window
-               if(newsTime - TimeCurrent() < secondsBefore)
+               if(newsTime - TimeGMT() < secondsBefore)
                {
                   m_lastNewsTime = newsTime;
                   m_isBlocked = true;

@@ -34,7 +34,6 @@
 #define TRADING_TIME_RANGES    "07:00-19:00"  // Format unifié
 
 // 📈 STRATEGY PARAMETERS
-#define STRATEGY_TYPE          STRATEGY_BREAKOUT  // STRATEGY_BREAKOUT or STRATEGY_REVERSION
 #define BARS_ANALYSIS          5
 #define EXPIRATION_BARS        50
 #define ORDER_DISTANCE_POINTS  100
@@ -100,7 +99,6 @@ int OnInit()
    config.tslTriggerPoints = TSL_TRIGGER_POINTS;
    config.tslPoints = TSL_POINTS;
    config.tradingTimeRanges = TRADING_TIME_RANGES;
-   config.strategyMode = STRATEGY_TYPE;
    config.barsN = BARS_ANALYSIS;
    config.expirationBars = EXPIRATION_BARS;
    config.orderDistPoints = ORDER_DISTANCE_POINTS;

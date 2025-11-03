@@ -448,7 +448,7 @@ public:
       
       // Informations actuelles
       MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
+      TimeToStruct(TimeGMT(), dt);
       
       string dayNames[] = {"Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"};
       string currentDay = (dt.day_of_week >= 0 && dt.day_of_week < 7) ? dayNames[dt.day_of_week] : "Unknown";
@@ -519,7 +519,7 @@ public:
    int GetCurrentHour()
    {
       MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
+      TimeToStruct(TimeGMT(), dt);
       return dt.hour;
    }
 
@@ -529,7 +529,7 @@ public:
    int GetCurrentWeekDay()
    {
       MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
+      TimeToStruct(TimeGMT(), dt);
       return dt.day_of_week;
    }
 
@@ -617,7 +617,7 @@ private:
          else
          {
             // Afficher l'alerte de blocage
-            datetime currentTime = TimeCurrent();
+            datetime currentTime = TimeGMT();
             
             // Mettre à jour l'alerte toutes les 5 minutes ou si le statut change
             if(forceUpdate || statusChanged || (currentTime - m_lastAlertTime) >= 300)

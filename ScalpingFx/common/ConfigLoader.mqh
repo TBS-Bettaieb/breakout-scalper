@@ -92,7 +92,6 @@ protected:
       m_config.baseMagic = baseMagic;
       m_config.useAllSymbols = false;
       m_config.timeframe = PERIOD_M5;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
    }
    
    // Setup risk and position sizing
@@ -181,6 +180,12 @@ protected:
       m_config.newsSeparator = COMMA;
    }
    
+   // 🆕 Setup FVG filter parameters
+   void SetupFvgFilter(bool useFvgFilter)
+   {
+      m_config.useFvgFilter = useFvgFilter;
+   }
+   
    // Setup block messages (used by all groups identically)
    void SetupBlockMessages()
    {
@@ -210,6 +215,7 @@ public:
       SetupStrategyParams(5, 50, 80,10,10);
       SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;
@@ -235,6 +241,7 @@ public:
       SetupStrategyParams(5, 50, 80,10,15);
       SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;
@@ -260,6 +267,7 @@ public:
       SetupStrategyParams(6, 60, 120,50,30);
       SetupRiskMultiplier(true, "08:00-10:00", 2.0, "Euro Session");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;
@@ -285,6 +293,7 @@ public:
       SetupStrategyParams(5, 50, 80,10,30);
       SetupRiskMultiplier(true, "14:00-15:30", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;
@@ -310,6 +319,7 @@ public:
       SetupStrategyParams(6, 60, 120,50,20);
       SetupRiskMultiplier(false, "14:30-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;
@@ -335,6 +345,7 @@ public:
       SetupStrategyParams(5, 50, 140,50,200);
       SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;
@@ -360,6 +371,7 @@ public:
       SetupStrategyParams(6, 60, 120,30,60);
       SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;
@@ -385,6 +397,7 @@ public:
       SetupStrategyParams(6, 60, 90,30,40);
       SetupRiskMultiplier(true, "13:15-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);
       SetupBlockMessages();
       
       return true;

@@ -56,10 +56,7 @@
 #define START_HOUR             7
 #define END_HOUR               19
 
-// 📈 PARAMÈTRES DE STRATÉGIE
-// STRATEGY_BREAKOUT:  Trade les cassures (trending markets)
-// STRATEGY_REVERSION: Trade le retour à la moyenne (ranging markets)
-#define STRATEGY_TYPE          STRATEGY_BREAKOUT
+// 📈 PARAMÈTRES DE STRATÉGIE (mode BREAKOUT par défaut)
 
 // BARS_ANALYSIS: Nombre de barres pour détecter swing points
 // - Majors rapides:  5-7 barres
@@ -122,7 +119,6 @@ int OnInit()
    config.tslPoints = TSL_POINTS;
    config.startHour = START_HOUR;
    config.endHour = END_HOUR;
-   config.strategyMode = STRATEGY_TYPE;
    config.barsN = BARS_ANALYSIS;
    config.expirationBars = EXPIRATION_BARS;
    config.orderDistPoints = ORDER_DISTANCE_POINTS;

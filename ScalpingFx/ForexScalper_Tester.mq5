@@ -42,7 +42,6 @@ input int      InpStartHour = 7;                            // Start Hour
 input int      InpEndHour = 20;                             // End Hour
 
 input group "📈 STRATEGY PARAMETERS"
-input ENUM_STRATEGY_MODE InpStrategyType = STRATEGY_BREAKOUT; // Strategy Type: BREAKOUT or REVERSION
 input int      InpBarsAnalysis = 5;                         // Bars Analysis
 input int      InpExpirationBars = 50;                      // Expiration Bars
 input int      InpOrderDistancePoints = 80;                // Order Distance (Points)
@@ -156,7 +155,6 @@ int OnInit()
    config.tslPoints = InpTslPoints;
    config.startHour = InpStartHour;
    config.endHour = InpEndHour;
-   config.strategyMode = InpStrategyType;
    config.barsN = InpBarsAnalysis;
    config.expirationBars = InpExpirationBars;
    config.orderDistPoints = InpOrderDistancePoints;
@@ -256,7 +254,7 @@ void DisplayInputParameters()
       return;
    }
    
-   string strategyTypeStr = (InpStrategyType == STRATEGY_BREAKOUT) ? "BREAKOUT" : "REVERSION";
+   string strategyTypeStr = "BREAKOUT";
    string trailingTPStr = "Disabled";
    
    if(InpUseTrailingTP)
@@ -395,13 +393,7 @@ void SaveConfigurationTemplate()
 //+------------------------------------------------------------------+
 string CreateHeaderTemplate()
 {
-   string strategyTypeStr = "";
-   switch(InpStrategyType)
-   {
-      case STRATEGY_BREAKOUT: strategyTypeStr = "STRATEGY_BREAKOUT"; break;
-      case STRATEGY_REVERSION: strategyTypeStr = "STRATEGY_REVERSION"; break;
-      default: strategyTypeStr = "STRATEGY_BREAKOUT"; break;
-   }
+   string strategyTypeStr = "STRATEGY_BREAKOUT";
    
    string trailingTPModeStr = "";
    switch((int)InpTrailingTPMode)
@@ -517,13 +509,7 @@ string CreateHeaderTemplate()
 //+------------------------------------------------------------------+
 string CreateConfigGroupTemplate()
 {
-   string strategyTypeStr = "";
-   switch(InpStrategyType)
-   {
-      case STRATEGY_BREAKOUT: strategyTypeStr = "STRATEGY_BREAKOUT"; break;
-      case STRATEGY_REVERSION: strategyTypeStr = "STRATEGY_REVERSION"; break;
-      default: strategyTypeStr = "STRATEGY_BREAKOUT"; break;
-   }
+   string strategyTypeStr = "STRATEGY_BREAKOUT";
    
    string trailingTPModeStr = "";
    switch((int)InpTrailingTPMode)
@@ -595,7 +581,7 @@ string CreateConfigGroupTemplate()
    content += "      m_config.tslPoints = " + IntegerToString(InpTslPoints) + ";\n";
    content += "      m_config.startHour = " + IntegerToString(InpStartHour) + ";\n";
    content += "      m_config.endHour = " + IntegerToString(InpEndHour) + ";\n";
-   content += "      m_config.strategyMode = " + strategyTypeStr + ";\n";
+   // Strategy mode removed in unified behavior
    content += "      m_config.barsN = " + IntegerToString(InpBarsAnalysis) + ";\n";
    content += "      m_config.expirationBars = " + IntegerToString(InpExpirationBars) + ";\n";
    content += "      m_config.orderDistPoints = " + IntegerToString(InpOrderDistancePoints) + ";\n";

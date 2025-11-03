@@ -51,7 +51,7 @@
 int CurrentHourMinute()
 {
    MqlDateTime dt; 
-   TimeToStruct(TimeCurrent(), dt); 
+   TimeToStruct(TimeGMT(), dt); 
    return dt.hour * 100 + dt.min; // Ex: 8h45 = 845
 }
 
@@ -213,7 +213,7 @@ public:
       if(!m_useFilter) return true;
 
       MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
+   TimeToStruct(TimeGMT(), dt);
       
       // Support des formats unifiés: "08:30-10:45" et "0830-1045"
       bool allowed = IsTimeMinuteInRangesUnified(m_timeMinuteRanges, dt.hour, dt.min);
@@ -241,7 +241,7 @@ public:
    int CurrentHourMinute()
    {
       MqlDateTime dt; 
-      TimeToStruct(TimeCurrent(), dt); 
+      TimeToStruct(TimeGMT(), dt); 
       return dt.hour * 100 + dt.min;
    }
 
@@ -276,7 +276,7 @@ public:
       if(!m_useFilter) return true;
 
       MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
+   TimeToStruct(TimeGMT(), dt);
       
       // Support des formats unifiés: "08:30-10:45" et "0830-1045"
       bool allowed = IsTimeMinuteInRangesUnified(m_timeMinuteRanges, dt.hour, dt.min);
