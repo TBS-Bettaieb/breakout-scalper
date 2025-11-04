@@ -73,8 +73,8 @@ public:
       ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, C'38,166,154');
       
       // Bid/Ask lines - Silver selon l'image
-      ChartSetInteger(m_chartId, CHART_COLOR_BID, clrSilver);                // Bid - Silver
-      ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrSilver);                // Ask - Silver
+      ChartSetInteger(m_chartId, CHART_COLOR_BID, clrLimeGreen);                // Bid - Silver
+      ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrBlack);                // Ask - Silver
       
       // Enable Bid/Ask lines display
       ChartSetInteger(m_chartId, CHART_SHOW_BID_LINE, true);
@@ -506,7 +506,7 @@ public:
    bool ShowAlert(
       string alertText,
       color textColor = clrYellow,
-      int fontSize = 42,
+      int fontSize = 16,
       string font = "Arial Black"
    )
    {

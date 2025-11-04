@@ -32,8 +32,9 @@ enum ENUM_TEST_CONFIG
    CONFIG_OVERLAP_SESSION,     // Test 3: Session chevauchement London-US
    CONFIG_WEEKEND_WARRIOR,     // Test 4: Trading weekend uniquement
    CONFIG_MINUTE_PRECISION,    // Test 5: Précision à la minute (9:30-11:45)
-   CONFIG_ALL_FILTERS,         // Test 6: Tous les filtres combinés
-   CONFIG_NO_FILTERS           // Test 7: Aucun filtre (24/7)
+   CONFIG_NEWS_ONLY,           // Test 6: NewsFilter uniquement (USD,EUR)
+   CONFIG_ALL_FILTERS,         // Test 7: Tous les filtres combinés
+   CONFIG_NO_FILTERS           // Test 8: Aucun filtre (24/7)
 };
 
 //+------------------------------------------------------------------+
@@ -66,6 +67,7 @@ string GetConfigName(ENUM_TEST_CONFIG config)
       case CONFIG_OVERLAP_SESSION:  return "Overlap Session (13h-16h)";
       case CONFIG_WEEKEND_WARRIOR:  return "Weekend Warrior (Sam-Dim)";
       case CONFIG_MINUTE_PRECISION: return "Minute Precision (9:30-11:45;14:00-16:30)";
+      case CONFIG_NEWS_ONLY:        return "News Filter Only (USD,EUR)";
       case CONFIG_ALL_FILTERS:      return "All Filters Combined";
       case CONFIG_NO_FILTERS:      return "No Filters (24/7)";
       default:                      return "Unknown";
@@ -244,6 +246,11 @@ bool LoadConfiguration(ENUM_TEST_CONFIG config)
          // TimeMinuteFilter: "9:30-11:45;14:00-16:30"
          // DayRangeFilter: "1-5" (Lundi à Vendredi)
          success = LoadMinutePrecision();
+         break;
+         
+      case CONFIG_NEWS_ONLY:
+         // NewsFilter: "USD,EUR" uniquement
+         success = LoadNewsOnly();
          break;
          
       case CONFIG_ALL_FILTERS:
@@ -446,6 +453,33 @@ bool LoadMinutePrecision()
       delete drf;
       return false;
    }
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| CONFIG_NEWS_ONLY                                                 |
+//+------------------------------------------------------------------+
+bool LoadNewsOnly()
+{
+   // NewsFilter UNIQUEMENT: "USD,EUR" / "NFP,PMI,Interest Rate" 
+   // 30min avant / 10min après / 7 jours de lookup
+   NewsFilter* nf = new NewsFilter();
+   if(nf == NULL || !nf.Initialize(true, "USD,EUR", "NFP,PMI,Interest Rate", 30, 10, 7, NEWS_COMMA))
+   {
+      Print("❌ Échec initialisation NewsFilter");
+      if(nf != NULL) delete nf;
+      return false;
+   }
+   if(!g_timeManager.AddFilter(nf))
+   {
+      delete nf;
+      return false;
+   }
+   
+   Print("✅ NewsFilter chargé seul - Surveillance: USD, EUR");
+   Print("   Keywords: NFP, PMI, Interest Rate");
+   Print("   Stop avant: 30min | Reprendre après: 10min");
    
    return true;
 }

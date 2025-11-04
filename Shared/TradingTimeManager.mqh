@@ -160,7 +160,9 @@ public:
          {
             if(!m_filters[i].IsTradingAllowed())
             {
-               UpdateStatus(TRADING_BLOCKED_MULTIPLE);
+               // Identifier le type de filtre qui bloque
+               ENUM_TRADING_STATUS blockStatus = IdentifyFilterStatus(m_filters[i]);
+               UpdateStatus(blockStatus);
                return false;
             }
          }
@@ -320,6 +322,30 @@ private:
    // (All legacy private Is*Allowed helpers removed)
 
    //+------------------------------------------------------------------+
+   //| Identifier le type de filtre qui bloque                         |
+   //+------------------------------------------------------------------+
+   ENUM_TRADING_STATUS IdentifyFilterStatus(ITimeFilter* filter)
+   {
+      if(filter == NULL) return TRADING_BLOCKED_MULTIPLE;
+      
+      string desc = filter.GetDescription();
+      
+      // Détecter le type de filtre par sa description
+      if(StringFind(desc, "TimeRange") >= 0)
+         return TRADING_BLOCKED_HOUR;
+      else if(StringFind(desc, "DayRange") >= 0)
+         return TRADING_BLOCKED_DAY;
+      else if(StringFind(desc, "Session") >= 0)
+         return TRADING_BLOCKED_SESSION;
+      else if(StringFind(desc, "News") >= 0)
+         return TRADING_BLOCKED_NEWS;
+      else if(StringFind(desc, "TimeMinute") >= 0)
+         return TRADING_BLOCKED_TIME_MINUTE;
+      else
+         return TRADING_BLOCKED_MULTIPLE;
+   }
+
+   //+------------------------------------------------------------------+
    //| Mettre à jour le statut et afficher l'alerte si nécessaire      |
    //+------------------------------------------------------------------+
    void UpdateStatus(ENUM_TRADING_STATUS newStatus, bool forceUpdate = false)
@@ -354,7 +380,7 @@ private:
                string alertMessage = GetBlockMessage(newStatus);
                color alertColor = GetBlockColor(newStatus);
                
-               m_chartManager.ShowAlert(alertMessage, alertColor, 36);
+               m_chartManager.ShowAlert(alertMessage, alertColor, 18);
                m_lastAlertTime = currentTime;
                
                if(m_verboseLogging && statusChanged)
@@ -402,7 +428,7 @@ private:
          case TRADING_BLOCKED_HOUR:
             return clrOrange;
          case TRADING_BLOCKED_DAY:
-            return clrYellow;
+            return clrOrange;
          case TRADING_BLOCKED_SESSION:
             return clrBlue;
          case TRADING_BLOCKED_NEWS:
