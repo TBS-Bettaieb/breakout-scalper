@@ -471,6 +471,11 @@ public:
       m_cacheHits = 0;
       m_cacheMisses = 0;
       m_memoryAllocs = 0;
+      
+      // 🆕 Initialiser les caches de FVG valides
+      ArrayResize(m_cachedBullish, 0);
+      ArrayResize(m_cachedBearish, 0);
+      m_validCacheBuilt = false;
    }
    
    //+------------------------------------------------------------------+
@@ -557,9 +562,33 @@ public:
             IndicatorRelease(m_atrHandles[i]);
       }
       
+      // Libérer tous les tableaux
       ArrayFree(m_fvgList);
       ArrayFree(m_atrHandles);
       ArrayFree(m_timeframes);
+      
+      // 🆕 Libérer les caches de timeframe
+      ArrayFree(m_lastBarTime);
+      ArrayFree(m_lastBarsCount);
+      
+      // 🆕 Libérer le HashSet
+      ArrayFree(m_fvgHashKeys);
+      ArrayFree(m_fvgHashState);
+      m_fvgHashSize = 0;
+      m_fvgHashCap = 0;
+      
+      // 🆕 Libérer les caches de FVG valides
+      ArrayFree(m_cachedBullish);
+      ArrayFree(m_cachedBearish);
+      m_validCacheBuilt = false;
+      
+      // Réinitialiser les compteurs de performance
+      m_processTimeMs = 0;
+      m_invalidateTimeMs = 0;
+      m_cacheHits = 0;
+      m_cacheMisses = 0;
+      m_memoryAllocs = 0;
+      
       m_initialized = false;
    }
    
@@ -789,6 +818,18 @@ public:
    void Clear()
    {
       ArrayResize(m_fvgList, 0);
+      
+      // 🆕 Réinitialiser le HashSet
+      ArrayResize(m_fvgHashKeys, 0);
+      ArrayResize(m_fvgHashState, 0);
+      m_fvgHashSize = 0;
+      m_fvgHashCap = 0;
+      
+      // 🆕 Réinitialiser les caches
+      ArrayResize(m_cachedBullish, 0);
+      ArrayResize(m_cachedBearish, 0);
+      m_validCacheBuilt = false;
+      
       if(m_config.debugMode)
          LOG_DEBUG("FVG list cleared");
    }

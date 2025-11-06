@@ -264,7 +264,8 @@ public:
       // Utiliser OrderManager::FindTicketViolatingPriceTolerance pour trouver un ordre dépassant le priceTolerance
       ulong violatingTicket = 0;
       bool isBuy = false;
-      double priceTolerance = SymbolInfoDouble(m_symbol, SYMBOL_BID) * 0.0001; // 0.01% tolerance
+      double priceTolerance = m_orderDistPoints * m_point * 0.15;
+      //double priceTolerance = SymbolInfoDouble(m_symbol, SYMBOL_BID) * 0.0001; // 0.01% tolerance
       double orderPrice = 0.0;
       double orderSL = 0.0;
       if(FindTicketViolatingPriceTolerance(priceTolerance, violatingTicket, isBuy, orderPrice, orderSL))
@@ -288,7 +289,7 @@ public:
 
             if(!isAllowed)
             {
-               OrderManager::SendLimitOrder(BuildOrderParams(),!isBuy, orderPrice,"FVG");
+               //OrderManager::SendLimitOrder(BuildOrderParams(),!isBuy, orderPrice,"FVG");
             }
             
          
