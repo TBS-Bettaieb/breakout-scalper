@@ -193,6 +193,21 @@ private:
    // Logging
    string                  m_lastBlockReason;
 
+   // Mode CSV (tester)
+   bool                    m_useCSV;           // Utiliser CSV en mode Strategy Tester
+   string                  m_csvFileName;      // Nom du fichier CSV
+   bool                    m_csvLoaded;        // CSV chargé avec succès
+
+   // Événements issus du CSV
+   struct NewsEvent
+   {
+      datetime time;
+      string   currency;
+      string   eventName;
+      string   impact;
+   };
+   NewsEvent               m_newsEvents[];
+
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
@@ -214,6 +229,12 @@ public:
       m_lastLoggedState = true;
       m_lastLogTime = 0;
       m_lastBlockReason = "";
+
+      // CSV defaults and auto-detect tester mode
+      m_useCSV = (bool)MQLInfoInteger(MQL_TESTER);
+      m_csvFileName = "NewsCalendar_Optimized.csv";
+      m_csvLoaded = false;
+      ArrayResize(m_newsEvents, 0);
    }
 
    //+------------------------------------------------------------------+
@@ -226,7 +247,8 @@ public:
       int stopBeforeMin,
       int startTradingMin,
       int daysLookup,
-      ENUM_NEWS_SEPARATOR separator
+      ENUM_NEWS_SEPARATOR separator,
+      string csvFileName = "NewsCalendar_Optimized.csv"
    )
    {
       m_useFilter = enabled;
@@ -236,13 +258,38 @@ public:
       m_startTradingMin = startTradingMin;
       m_daysLookup = daysLookup;
       m_separator = separator;
+      m_csvFileName = csvFileName;
       
-      if(!enabled || currencies == "" || keywords == "")
+      if(!enabled)
+      {
+         Print(m_logPrefix + "NewsFilter is DISABLED");
          return true;
-      
-      Print(m_logPrefix + "Initialized with currencies: " + currencies + 
-            ", keywords: " + keywords + 
-            ", stopBefore: " + IntegerToString(stopBeforeMin) + " min");
+      }
+
+      // Auto-detect execution mode
+      m_useCSV = (bool)MQLInfoInteger(MQL_TESTER);
+
+      if(m_useCSV)
+      {
+         Print(m_logPrefix + "\xF0\x9F\x93\x8A TESTER MODE: Using CSV file: " + m_csvFileName);
+         if(!LoadNewsFromCSV())
+         {
+            Print(m_logPrefix + "\xE2\x9A\xA0\xEF\xB8\x8F WARNING: Could not load CSV. NewsFilter inactive in backtest.");
+            return false;
+         }
+         Print(m_logPrefix + "\xE2\x9C\x85 Loaded " + IntegerToString(ArraySize(m_newsEvents)) + " events from CSV");
+      }
+      else
+      {
+         Print(m_logPrefix + "\xF0\x9F\x94\xB4 LIVE MODE: Using Calendar API");
+      }
+
+      if(currencies != "" && keywords != "")
+      {
+         Print(m_logPrefix + "Initialized with currencies: " + currencies + 
+               ", keywords: " + keywords + 
+               ", stopBefore: " + IntegerToString(stopBeforeMin) + " min");
+      }
       return true;
    }
 
@@ -371,11 +418,140 @@ public:
       return m_daysLookup;
    }
 
+   // NOUVELLES méthodes publiques (CSV)
+   string GetCSVFileName() const { return m_csvFileName; }
+   bool IsUsingCSV() const { return m_useCSV; }
+   void ForceCSVMode(bool useCSV) { m_useCSV = useCSV; m_csvLoaded = false; }
+   void SetCSVFile(string fileName) { m_csvFileName = fileName; m_csvLoaded = false; }
+
 private:
    //+------------------------------------------------------------------+
    //| Vérifier les actualités à venir                                |
    //+------------------------------------------------------------------+
    bool CheckUpcomingNewsEvents()
+   {
+      if(m_useCSV)
+         return CheckUpcomingNewsFromCSV();
+      return CheckUpcomingNewsFromAPI();
+   }
+
+   // Chargement des événements depuis un CSV
+   bool LoadNewsFromCSV()
+   {
+      if(m_csvLoaded)
+         return true;
+
+      ArrayResize(m_newsEvents, 0);
+
+      // Essayer Common/Files en priorité
+      int fileHandle = FileOpen(m_csvFileName, FILE_READ|FILE_CSV|FILE_ANSI|FILE_COMMON, ',');
+      if(fileHandle == INVALID_HANDLE)
+      {
+         // Fallback: MQL5/Files du terminal
+         fileHandle = FileOpen(m_csvFileName, FILE_READ|FILE_CSV|FILE_ANSI, ',');
+      }
+
+      if(fileHandle == INVALID_HANDLE)
+      {
+         Print(m_logPrefix + "❌ ERROR: Could not open CSV file: " + m_csvFileName);
+         Print(m_logPrefix + "Expected paths: " +
+              TerminalInfoString(TERMINAL_COMMONDATA_PATH) + "\\Files\\" + m_csvFileName + " OR " +
+              TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\Files\\" + m_csvFileName);
+         return false;
+      }
+
+      // Lire et ignorer l'en-tête
+      if(FileIsEnding(fileHandle))
+      {
+         FileClose(fileHandle);
+         return false;
+      }
+      // Consommer l'en-tête (4 colonnes)
+      FileReadString(fileHandle); FileReadString(fileHandle); FileReadString(fileHandle); FileReadString(fileHandle);
+
+      int count = 0;
+      while(!FileIsEnding(fileHandle))
+      {
+         string dateTimeStr = FileReadString(fileHandle);
+         string currency = FileReadString(fileHandle);
+         string eventName = FileReadString(fileHandle);
+         string impact = FileReadString(fileHandle);
+
+         if(dateTimeStr == "")
+            break;
+
+         datetime eventTime = StringToTime(dateTimeStr);
+         if(eventTime == 0)
+         {
+            Print(m_logPrefix + "⚠️ Invalid datetime: " + dateTimeStr);
+            continue;
+         }
+
+         int size = ArraySize(m_newsEvents);
+         ArrayResize(m_newsEvents, size + 1);
+         m_newsEvents[size].time = eventTime;
+         m_newsEvents[size].currency = currency;
+         m_newsEvents[size].eventName = eventName;
+         m_newsEvents[size].impact = impact;
+         count++;
+      }
+
+      FileClose(fileHandle);
+      m_csvLoaded = true;
+      return count > 0;
+   }
+
+   // Vérification via CSV
+   bool CheckUpcomingNewsFromCSV()
+   {
+      if(!m_csvLoaded)
+         return false;
+
+      string sep = (m_separator == NEWS_COMMA) ? "," : ";";
+      ushort sep_code = StringGetCharacter(sep, 0);
+      int k = StringSplit(m_keywords, sep_code, m_newsToAvoid);
+      if(k <= 0)
+         return false;
+
+      datetime currentTime = TimeCurrent();
+      int secondsBefore = m_stopBeforeMin * 60;
+
+      for(int i = 0; i < ArraySize(m_newsEvents); i++)
+      {
+         if(StringFind(m_currencies, m_newsEvents[i].currency) < 0)
+            continue;
+
+         int timeDiff = (int)(m_newsEvents[i].time - currentTime);
+         if(timeDiff < 0 || timeDiff > m_daysLookup * 86400)
+            continue;
+
+         for(int j = 0; j < k; j++)
+         {
+            if(StringFind(m_newsEvents[i].eventName, m_newsToAvoid[j]) >= 0)
+            {
+               if(timeDiff < secondsBefore)
+               {
+                  m_lastNewsAvoided = m_newsEvents[i].time;
+                  m_tradingDisabledNews = true;
+                  m_lastNewsMessage = m_newsEvents[i].currency + " " +
+                                     m_newsEvents[i].eventName + " at " +
+                                     TimeToString(m_newsEvents[i].time, TIME_MINUTES);
+
+                  if(TimeCurrent() - m_lastLogTime >= 60)
+                  {
+                     LogIfChanged(false, "Trading disabled due to news: " + m_lastNewsMessage);
+                     m_lastLogTime = TimeCurrent();
+                  }
+                  return true;
+               }
+            }
+         }
+      }
+      return false;
+   }
+
+   // Vérification via API (ancienne implémentation)
+   bool CheckUpcomingNewsFromAPI()
    {
       // Parser les keywords
       string sep = (m_separator == NEWS_COMMA) ? "," : ";";
