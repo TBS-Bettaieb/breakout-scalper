@@ -388,16 +388,17 @@ private:
          if(!trf.Initialize(true, timeRangeStr))
          {
             Logger::Error("❌ Invalid TimeRange format: " + timeRangeStr);
-            delete trf;
+            delete trf;  // Supprimer seulement si Initialize() échoue
             return false;
          }
          
          if(!m_timeManager.AddFilter(trf))
          {
             Logger::Error("❌ Failed to add TimeRange Filter to TradingTimeManager");
-            delete trf;
+            delete trf;  // Supprimer si AddFilter() échoue (filtre non ajouté)
             return false;
          }
+         // Si AddFilter() réussit, TradingTimeManager possède maintenant le filtre
          
          Logger::Info("✅ TimeRange Filter initialized: " + timeRangeStr);
       }
@@ -426,16 +427,17 @@ private:
          ))
          {
             Logger::Error("❌ Failed to initialize NewsFilter");
-            delete nf;
+            delete nf;  // Supprimer seulement si Initialize() échoue
             return false;
          }
          
          if(!m_timeManager.AddFilter(nf))
          {
             Logger::Error("❌ Failed to add NewsFilter to TradingTimeManager");
-            delete nf;
+            delete nf;  // Supprimer si AddFilter() échoue (filtre non ajouté)
             return false;
          }
+         // Si AddFilter() réussit, TradingTimeManager possède maintenant le filtre
          
          Logger::Info("✅ NewsFilter added to TradingTimeManager");
          Logger::Info("   Currencies: " + m_config.newsCurrencies);

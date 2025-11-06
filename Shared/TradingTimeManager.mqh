@@ -127,6 +127,7 @@ public:
    }
 
    // Ajouter un filtre polymorphique (nouvelle architecture)
+   // TradingTimeManager prend possession du filtre et le libérera dans le destructeur
    bool AddFilter(ITimeFilter* filter)
    {
       if(filter == NULL)
@@ -137,7 +138,7 @@ public:
       if(!filter.IsEnabled())
       {
          Print("[TradingTimeManager] WARNING: Filter is disabled, not adding");
-         delete filter;
+         // Ne pas supprimer ici - laisser l'appelant gérer
          return false;
       }
       int sz = ArraySize(m_filters);
