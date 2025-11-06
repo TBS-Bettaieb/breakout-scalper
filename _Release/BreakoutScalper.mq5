@@ -10,6 +10,7 @@
 // User Input Parameters
 input string   InpSymbolToTrade = "";  // Symbol to trade (empty = use chart symbol)
 input double   InpRiskPercent = -1.0;  // Risk per trade (%) (-1 = use group default)
+input double   InpPriceTolerancePercent = -1.0; // Price Tolerance Percent (-1 = use group default, 0.01 = 0.01%)
 input bool     InpUseFvgFilter = false;  // Enable FVG Filter
 
 // Include required files
@@ -90,6 +91,11 @@ int OnInit()
    {
       config.riskPercent = InpRiskPercent;
       Logger::Warning("⚠️ Risk percent overridden to: " + DoubleToString(InpRiskPercent, 1) + "%");
+   }
+   if(InpPriceTolerancePercent >= 0.0)
+   {
+      config.priceTolerancePercent = InpPriceTolerancePercent;
+      Logger::Warning("⚠️ Price tolerance overridden to: " + DoubleToString(InpPriceTolerancePercent, 3) + "%");
    }
    
    // Override FVG filter if specified in input
@@ -235,6 +241,7 @@ void DisplayConfigurationInfo(BotConfig &config)
       "Risk: %.1f%%\n" +
       "TP/SL: %d/%d points\n" +
       "Strategy: %s\n" +
+      "Order Distance: %d pts | Price Tolerance: %.3f%%\n" +
       "Bars Analysis: %d\n" +
       "Trading Hours: %02d:00-%02d:00\n" +
       "Trailing TP: %s\n" +
@@ -248,6 +255,8 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.riskPercent,
       config.tpPoints, config.slPoints,
       strategyTypeStr,
+      config.orderDistPoints,
+      config.priceTolerancePercent,
       config.barsN,
       config.startHour, config.endHour,
       trailingTPStr,

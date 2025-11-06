@@ -309,6 +309,7 @@ private:
             m_config.useDynamicTSLTrigger,      // 🆕 AJOUTER
             m_config.tslCostMultiplier,         // 🆕 AJOUTER
             m_config.tslMinTriggerPoints,       // 🆕 AJOUTER
+            m_config.priceTolerancePercent,
             m_config.useFvgFilter               // 🆕 FVG FILTER
          );
          

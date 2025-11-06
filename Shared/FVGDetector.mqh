@@ -179,7 +179,7 @@ private:
       ArrayResize(m_fvgList, n + 1);
       m_fvgList[n] = fvg;
       m_memoryAllocs++;
-      HashInsert(HashFVG(fvg));
+      // HashInsert(HashFVG(fvg));  // 🔥 DÉSACTIVÉ temporairement
       m_validCacheBuilt = false; // invalider le cache des listes valides
    }
 
@@ -237,7 +237,8 @@ private:
          ArrayResize(m_fvgList, validCount);
          ArrayCopy(m_fvgList, kept);
          
-         // Reconstruire hash
+         /*
+         // Reconstruire hash - DÉSACTIVÉ
          ArrayResize(m_fvgHashKeys, 0);
          ArrayResize(m_fvgHashState, 0);
          m_fvgHashSize = 0;
@@ -247,6 +248,7 @@ private:
          {
             HashInsert(HashFVG(m_fvgList[i]));
          }
+         */
          
          m_validCacheBuilt = false;
          
@@ -342,8 +344,20 @@ private:
    //+------------------------------------------------------------------+
    bool ExistsFVG(const FVGInfo &x)
    {
-      ulong h = HashFVG(x);
-      return HashContains(h);
+      // 🔥 DÉSACTIVER HashSet temporairement (boucle infinie)
+      // Recherche linéaire simple
+      for(int i = 0; i < ArraySize(m_fvgList); i++)
+      {
+         if(m_fvgList[i].startTime == x.startTime &&
+            m_fvgList[i].endTime == x.endTime &&
+            MathAbs(m_fvgList[i].top - x.top) < m_point &&
+            MathAbs(m_fvgList[i].bottom - x.bottom) < m_point &&
+            m_fvgList[i].isBullish == x.isBullish)
+         {
+            return true;
+         }
+      }
+      return false;
    }
    
    //+------------------------------------------------------------------+

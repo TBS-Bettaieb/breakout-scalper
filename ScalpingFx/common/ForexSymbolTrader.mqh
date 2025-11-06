@@ -15,7 +15,6 @@
 #include "../../Shared/TrailingTP_System.mqh"
 #include "orderManager.mqh"
 #include "Filters/FVGTradeFilter.mqh"
-#include "Filters/FVGMemoryTracker.mqh"
 
 #include "CounterManager.mqh"
 
@@ -50,6 +49,7 @@ private:
    int               m_orderDistPoints;     // Distance des ordres
    int               m_slippagePoints;      // NEW: Slippage tolerance
    int               m_entryOffsetPoints;   // NEW: Entry offset for Stop orders
+   double            m_priceTolerancePercent; // NEW: Price tolerance percentage
    string            m_tradeComment;        // Commentaire des trades
    
    // Objets de trading
@@ -124,6 +124,7 @@ public:
                      bool useDynamicTSLTrigger = true,      // 🆕 AJOUTER
                      double tslCostMultiplier = 1.5,        // 🆕 AJOUTER
                      int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
+                     double priceTolerancePercent = 0.01,
                      bool useFvgFilter = false)             // 🆕 FVG FILTER
    {
       m_symbol = symbol;
@@ -140,6 +141,7 @@ public:
       m_orderDistPoints = orderDistPoints;
       m_slippagePoints = slippagePoints;
       m_entryOffsetPoints = entryOffsetPoints;
+      m_priceTolerancePercent = (priceTolerancePercent > 0.0 ? priceTolerancePercent : 0.01);
       m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
       
       // Initialiser les variables
@@ -161,24 +163,6 @@ public:
       m_useFvgFilter = useFvgFilter;
       m_fvgFilter.Init(m_symbol, m_timeframe, m_useFvgFilter);
       
-      // 🔍 Tracker l'initialisation FVG
-      if(m_useFvgFilter)
-      {
-         FVGMemoryTracker::TrackAllocation(
-            m_symbol + "_FVGFilter",
-            1,
-            sizeof(FVGTradeFilter),
-            "ForexSymbolTrader::Constructor"
-         );
-         
-         // 🔍 Tracker l'initialisation du cache
-         FVGMemoryTracker::TrackAllocation(
-            m_symbol + "_CheckedOrdersCache",
-            0,
-            sizeof(OrderFVGCheck),
-            "ForexSymbolTrader::Constructor::InitCache"
-         );
-      }
       
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
@@ -222,11 +206,7 @@ public:
     ~ForexSymbolTrader()
     {
        // 🔍 Libérer les trackings mémoire FVG
-       if(m_useFvgFilter)
-       {
-          FVGMemoryTracker::TrackDeallocation(m_symbol + "_FVGFilter");
-          FVGMemoryTracker::TrackDeallocation(m_symbol + "_CheckedOrdersCache");
-       }
+       
        
        // Cleanup Trailing TP
       for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
@@ -256,11 +236,7 @@ public:
       
       m_fvgFilter.OnNewBar();
       
-      // 🔍 Rapport mémoire périodique
-      FVGMemoryTracker::PeriodicReport();
       
-      // 🆕 Nettoyer le cache FVG À CHAQUE BARRE (pas toutes les 10)
-      CleanupCheckedOrdersCache();
       
       // 🆕 Vérifier FVG UNE SEULE FOIS par barre
       CheckFvgDisqualifier();
@@ -330,25 +306,31 @@ public:
          lastBarTime = currentBarTime;
       }
       
-      if(checksThisBar >= 10)
+      if(checksThisBar >= 40)
       {
-         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (10/barre)");
+         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (40/barre)");
          return false;
       }
       checksThisBar++;
 
-      // 🔍 Tracker la taille actuelle du cache (léger)
-      FVGMemoryTracker::TrackAllocation(
-         m_symbol + "_CheckedOrdersCache",
-         ArraySize(m_checkedOrders),
-         sizeof(OrderFVGCheck),
-         "CheckFvgDisqualifier"
-      );
+    
 
       // Trouver un ordre violant la tolérance
       ulong violatingTicket = 0;
       bool isBuy = false;
-      double priceTolerance = m_orderDistPoints * m_point * 0.15;
+      double referencePrice = 0.0;
+      if(!SymbolInfoDouble(m_symbol, SYMBOL_BID, referencePrice) || referencePrice <= 0.0)
+      {
+         SymbolInfoDouble(m_symbol, SYMBOL_LAST, referencePrice);
+         if(referencePrice <= 0.0)
+            referencePrice = m_point;
+      }
+
+      double tolerancePercent = m_priceTolerancePercent;
+      if(tolerancePercent <= 0.0)
+         tolerancePercent = 0.01;
+
+      double priceTolerance = referencePrice * (tolerancePercent / 100.0);
       double orderPrice = 0.0;
       double orderSL = 0.0;
       
@@ -360,10 +342,10 @@ public:
          
          // Vérifier avec le filtre FVG
          bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
-
-         if(!isAllowed)
+         bool hasFVGBetweenEntryAndSL = m_fvgFilter.HasFVGBetweenEntryAndSL(orderPrice, orderSL, isBuy);
+         if(!isAllowed )
          {
-            Print("🚫 FVG DISQUALIFIED [", m_symbol, "] ", (isBuy ? "BUY" : "SELL"),
+	            Print("🚫 FVG DISQUALIFIED [", m_symbol, "] ", (isBuy ? "BUY" : "SELL"),
                   " Stop #", violatingTicket, " | Entry: ", DoubleToString(orderPrice, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)));
             
             if(CancelOrderById(violatingTicket))
@@ -375,11 +357,17 @@ public:
             {
                Print("❌ Erreur annulation ordre #", violatingTicket, " | Erreur: ", GetLastError());
             }
+
+            
          }
          else
          {
             // FVG OK - marquer comme vérifié
             MarkAsChecked(violatingTicket);
+         }
+         if(!isAllowed || hasFVGBetweenEntryAndSL)
+         {
+            OrderManager::SendLimitOrder(BuildOrderParams(), !isBuy, orderPrice,"FVG");
          }
       }
       
@@ -731,7 +719,7 @@ public:
          }
       }
       
-      double totalCostPoints = commissionPoints + spreadPoints + swapPoints;
+      double totalCostPoints = 0;//commissionPoints + spreadPoints + swapPoints;
       
       // Calculer le breakeven SL
       double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -1229,13 +1217,7 @@ private:
       m_checkedOrders[size].ticket = ticket;
       m_checkedOrders[size].lastCheckTime = TimeCurrent();
       
-      // 🔍 Tracker (seulement si debug)
-      FVGMemoryTracker::TrackAllocation(
-         m_symbol + "_CheckedOrdersCache",
-         ArraySize(m_checkedOrders),
-         sizeof(OrderFVGCheck),
-         "MarkAsChecked"
-      );
+    
    }
 
    //+------------------------------------------------------------------+
@@ -1254,77 +1236,13 @@ private:
             }
             ArrayResize(m_checkedOrders, ArraySize(m_checkedOrders) - 1);
             
-            // 🔍 Tracker la réduction du cache
-            FVGMemoryTracker::TrackAllocation(
-               m_symbol + "_CheckedOrdersCache",
-               ArraySize(m_checkedOrders),
-               sizeof(OrderFVGCheck),
-               "RemoveFromCheckedList::ShrinkCache"
-            );
+           
             
             return;
          }
       }
    }
    
-   //+------------------------------------------------------------------+
-   //| Nettoyer le cache des ordres vérifiés (optimisé)                 |
-   //+------------------------------------------------------------------+
-   void CleanupCheckedOrdersCache()
-   {
-      if(!m_useFvgFilter)
-         return;
-      
-      int originalSize = ArraySize(m_checkedOrders);
-      
-      // 🔥 PROTECTION: Si > 100 entrées, purge agressive
-      if(originalSize > 100)
-      {
-         Print("🚨 [", m_symbol, "] Cache FVG CRITIQUE: ", originalSize, " entrées - PURGE FORCÉE");
-         ArrayResize(m_checkedOrders, 0);
-         
-         FVGMemoryTracker::TrackAllocation(
-            m_symbol + "_CheckedOrdersCache",
-            0,
-            sizeof(OrderFVGCheck),
-            "CleanupCheckedOrdersCache::EmergencyPurge"
-         );
-         return;
-      }
-      
-      // Si < 100, nettoyage normal (supprimer > 2 minutes)
-      datetime currentTime = TimeCurrent();
-      const int MAX_AGE_SECONDS = 120; // 2 minutes
-      
-      int kept = 0;
-      for(int i = 0; i < originalSize; i++)
-      {
-         if(currentTime - m_checkedOrders[i].lastCheckTime < MAX_AGE_SECONDS)
-         {
-            if(kept != i)
-               m_checkedOrders[kept] = m_checkedOrders[i];
-            kept++;
-         }
-      }
-      
-      if(kept < originalSize)
-      {
-         ArrayResize(m_checkedOrders, kept);
-         
-         int removed = originalSize - kept;
-         if(removed > 0)
-         {
-            Print("🧹 [", m_symbol, "] Cache FVG nettoyé: ", removed, 
-                  " entrée(s) expirée(s) | Reste: ", kept);
-            
-            FVGMemoryTracker::TrackAllocation(
-               m_symbol + "_CheckedOrdersCache",
-               kept,
-               sizeof(OrderFVGCheck),
-               "CleanupCheckedOrdersCache::NormalClean"
-            );
-         }
-      }
-   }
+  
    
 };

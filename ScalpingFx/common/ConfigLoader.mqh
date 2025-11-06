@@ -26,6 +26,7 @@ public:
    CConfigGroup() 
    {
       m_symbolCount = 0;
+      m_config.priceTolerancePercent = 0.01;
    }
    
    // Virtual methods to be overridden by each group
@@ -169,7 +170,7 @@ protected:
    // Setup news filter parameters
    void SetupNewsFilter(bool useNewsFilter, string currencies = "USD,EUR,GBP", 
                        string keyEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP",
-                       int stopBeforeMin = 10, int startAfterMin = 10, int lookupDays = 7)
+                       int stopBeforeMin = 15, int startAfterMin = 15, int lookupDays = 7)
    {
       m_config.useNewsFilter = useNewsFilter;
       m_config.newsCurrencies = currencies;
@@ -181,9 +182,10 @@ protected:
    }
    
    // 🆕 Setup FVG filter parameters
-   void SetupFvgFilter(bool useFvgFilter)
+   void SetupFvgFilter(bool useFvgFilter, double priceTolerancePercent = 0.01)
    {
       m_config.useFvgFilter = useFvgFilter;
+      m_config.priceTolerancePercent = priceTolerancePercent;
    }
    
    // Setup block messages (used by all groups identically)
@@ -209,13 +211,13 @@ public:
       
       // Configuration from EU_GU_FXScalper.mq5
       SetupBasicParams("EURUSD_FXScalper V1.0", "EURUSD_FXScalper", 2971308);
-      SetupRiskParams(1.0, 200, 180);
-      SetupDynamicTrailingStop(10, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("07:00-21:00");
-      SetupStrategyParams(5, 50, 80,10,10);
-      SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
+      SetupRiskParams(1.0, 280, 260);
+      SetupDynamicTrailingStop(15, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours("09:25-18:25");
+      SetupStrategyParams(7, 70, 60,10,30);
+      SetupRiskMultiplier(true, "13:00-17:00", 1.5 , "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(false);
+      SetupFvgFilter(true);
       SetupBlockMessages();
       
       return true;
@@ -234,14 +236,14 @@ public:
       AddSymbols("GBPUSD");
       
       // Configuration from EU_GU_FXScalper.mq5
-      SetupBasicParams("GBPUSD_FXScalper V1.0", "GBPUSD_FXScalper", 2971308);
-      SetupRiskParams(1.0, 200, 180);
-      SetupDynamicTrailingStop(20, 15, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupBasicParams("GBPUSD Scalper V1.0", "GBPUSD Scalper", 2971308);
+      SetupRiskParams(1.0, 260, 180);
+      SetupDynamicTrailingStop(30, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("07:00-21:00");
-      SetupStrategyParams(5, 50, 80,10,15);
+      SetupStrategyParams(4, 30,100,10,40);
       SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true,"USD,GBP","");
-      SetupFvgFilter(false);
+      SetupFvgFilter(true);
       SetupBlockMessages();
       
       return true;
@@ -260,14 +262,14 @@ public:
       AddSymbols("GER40.cash");
       AddSymbols("DE40");
       // Configuration from GER40_Scalper.mq5
-      SetupBasicParams("GER40 Scalper V1.0", "GER40_Scalper", 28834731);
-      SetupRiskParams(0.5, 7000, 5500);
-      SetupDynamicTrailingStop(200, 120, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("07:00-18:00");
-      SetupStrategyParams(6, 60, 120,50,30);
-      SetupRiskMultiplier(true, "08:00-10:00", 2.0, "Euro Session");
+      SetupBasicParams("GER40 Scalper V1.0", "GER40 Scalper", 28834731);
+      SetupRiskParams(0.3, 2800, 2100);
+      SetupDynamicTrailingStop(200, 120, 1.0, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours("09:15-18:25");
+      SetupStrategyParams(4, 30, 60,20,30);
+      SetupRiskMultiplier(true, "09:15-10:00", 2, "Euro Session");
       SetupNewsFilter(true);
-      SetupFvgFilter(false);
+      SetupFvgFilter(true);
       SetupBlockMessages();
       
       return true;
@@ -286,14 +288,14 @@ public:
       AddSymbols("USDJPY");
       
       // Configuration from USDJPY_FXScalper.mq5
-      SetupBasicParams("USDJPY_FXScalper V1.0", "USDJPY_FXScalper", 37483647);
-      SetupRiskParams(0.25, 230, 210);
+      SetupBasicParams("USDJPY Scalper V1.0", "USDJPY Scalper", 37483647);
+      SetupRiskParams(1.0, 390,180);
       SetupDynamicTrailingStop(30, 20, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("13:00-18:00");
-      SetupStrategyParams(5, 50, 80,10,30);
+      SetupStrategyParams(4, 80,130,10,90);
       SetupRiskMultiplier(true, "14:00-15:30", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(false);
+      SetupFvgFilter(true);
       SetupBlockMessages();
       
       return true;
@@ -312,7 +314,7 @@ public:
       AddSymbols("US100.cash"); 
       AddSymbols("USTEC");
       // Configuration from USIndices_Scalper.mq5
-      SetupBasicParams("US100 Index Scalper V1.0", "US100_Scalper", 29834757);
+      SetupBasicParams("US100 Index Scalper V1.0", "US100 Scalper", 29834757);
       SetupRiskParams(0.5, 5000, 5000);
       SetupDynamicTrailingStop(200, 150, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("13:00-21:00");
@@ -338,14 +340,14 @@ public:
       AddSymbols("US30.cash");
       AddSymbols("US30");
       // Configuration from USIndices_Scalper.mq5
-      SetupBasicParams("US30 Index Scalper V1.0", "US30_Scalper", 29834758);
+      SetupBasicParams("US30 Index Scalper V1.0", "US30 Scalper", 29834758);
       SetupRiskParams(0.5, 7000, 5500);
       SetupDynamicTrailingStop(500, 550, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("08:00-21:00");
       SetupStrategyParams(5, 50, 140,50,200);
       SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(false);
+      SetupFvgFilter(true);
       SetupBlockMessages();
       
       return true;
@@ -364,14 +366,14 @@ public:
       AddSymbols("US500.cash");
       AddSymbols("US500");
       // Configuration from USIndices_Scalper.mq5
-      SetupBasicParams("US500 Index Scalper V1.0", "US500_Scalper", 29834759);
-      SetupRiskParams(0.25, 4000, 3600);
-      SetupDynamicTrailingStop(150, 90, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("08:00-20:00");
-      SetupStrategyParams(6, 60, 120,30,60);
-      SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
+      SetupBasicParams("US500 Index Scalper V1.0", "US500 Scalper", 29834759);
+      SetupRiskParams(0.5, 2800, 2300);
+      SetupDynamicTrailingStop(40, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours("08:10-17:25");
+      SetupStrategyParams(6, 70, 80,30,60);
+      SetupRiskMultiplier(true, "14:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(false);
+      SetupFvgFilter(true,0.02);
       SetupBlockMessages();
       
       return true;
@@ -390,14 +392,14 @@ public:
       AddSymbols("XAUUSD");
       
       // Configuration from XAUUSD_Gold_Scalper.mq5
-      SetupBasicParams("XAUUSD Gold Scalper V1.0", "XAUUSD_Gold_Scalper", 29479999);
+      SetupBasicParams("Gold Scalper V1.0", "Gold Scalper", 29479999);
       SetupRiskParams(0.25, 1600,1400);
       SetupDynamicTrailingStop(80, 50, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("07:00-20:00");
       SetupStrategyParams(6, 60, 90,30,40);
       SetupRiskMultiplier(true, "13:15-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(false);
+      SetupFvgFilter(true,0.03);
       SetupBlockMessages();
       
       return true;

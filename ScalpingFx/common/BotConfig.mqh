@@ -39,6 +39,7 @@ struct BotConfig
    int               orderDistPoints;
    int               slippagePoints;        // NEW: Slippage tolerance in points
    int               entryOffsetPoints;     // NEW: Entry price offset for Stop orders
+   double            priceTolerancePercent; // NEW: Price tolerance percentage for FVG checks
    bool              useTrailingTP;
    ENUM_TRAILING_TP_MODE trailingTPMode;
    string            customTPLevels;

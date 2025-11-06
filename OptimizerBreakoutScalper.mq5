@@ -17,7 +17,6 @@
 #include "ScalpingFx/Core/ForexScalperBot.mqh"
 #include "ScalpingFx/common/ConfigLoader.mqh"
 #include "Shared/Logger.mqh"
-#include "ScalpingFx/common/Filters/FVGMemoryTracker.mqh"
 
 //+------------------------------------------------------------------+
 //| INPUT PARAMETERS - All configurable                              |
@@ -87,6 +86,7 @@ input string   InpNewsBlockMsg = "";         // News Block Message (empty = use 
 
 input group "🆕 FVG FILTER"
 input int      InpUseFvgFilter = -1;        // Use FVG Filter (-1=config, 0=false, 1=true)
+input double   InpPriceTolerancePercent = -1.0; // Price Tolerance Percent (-1 = use config default, 0.01 = 0.01%)
 
 input group "🚨 ALERT MESSAGES"
 input string   InpHourBlockMsg = "";         // Hour Block Message (empty = use config default)
@@ -267,6 +267,8 @@ int OnInit()
       config.expirationBars = InpExpirationBars;
    if(InpOrderDistancePoints >= 0)
       config.orderDistPoints = InpOrderDistancePoints;
+   if(InpPriceTolerancePercent >= 0.0)
+      config.priceTolerancePercent = InpPriceTolerancePercent;
    if(InpSlippagePoints >= 0)
       config.slippagePoints = InpSlippagePoints;
    if(InpEntryOffsetPoints >= 0)
@@ -330,9 +332,7 @@ int OnInit()
    {
       Logger::SetLevel(config.logLevel);
    }
-   
-   // 🔍 Activer le tracking mémoire FVG
-   FVGMemoryTracker::SetDebugMode(InpFVGMemoryDebug);
+    
    
    // Log which values were overridden
    LogInputOverrides();
@@ -353,6 +353,12 @@ bot = new ForexScalperBot(config);
    if(!bot.Initialize())
    {
       return(CleanupAndFail("ERROR: Bot initialization failed"));
+   }
+
+   if(config.orderDistPoints<=config.entryOffsetPoints)
+   {
+
+      return(CleanupAndFail("ERROR: Bot orderDistPoints underor equal entryOffsetPoints"));
    }
    
    // Display configuration info
@@ -399,19 +405,7 @@ void OnTick()
    }
 }
 
-//+------------------------------------------------------------------+
-//| Chart event function                                             |
-//+------------------------------------------------------------------+
-void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
-{
-   if(id == CHARTEVENT_KEYDOWN)
-   {
-      if(lparam == 'M') // Touche M = Memory report
-      {
-         FVGMemoryTracker::FullReport();
-      }
-   }
-}
+
 
 //+------------------------------------------------------------------+
 //| Validate symbol is available for trading                         |
@@ -489,6 +483,7 @@ void DisplayConfigurationInfo(BotConfig &config)
       "Risk: %.1f%%\n" +
       "TP/SL: %d/%d points\n" +
       "Strategy: %s\n" +
+      "Order Distance: %d pts | Price Tolerance: %.3f%%\n" +
       "Bars Analysis: %d\n" +
       "Trading Hours: %s\n" +
       "Trailing TP: %s\n" +
@@ -502,6 +497,8 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.riskPercent,
       config.tpPoints, config.slPoints,
       strategyTypeStr,
+      config.orderDistPoints,
+      config.priceTolerancePercent,
       config.barsN,
       config.tradingTimeRanges != "" ? config.tradingTimeRanges : 
          StringFormat("%02d:00-%02d:00", config.startHour, config.endHour),
@@ -542,6 +539,7 @@ void LogInputOverrides()
    if(InpBarsAnalysis >= 0) { overrides += "  - Bars Analysis\n"; overrideCount++; }
    if(InpExpirationBars >= 0) { overrides += "  - Expiration Bars\n"; overrideCount++; }
    if(InpOrderDistancePoints >= 0) { overrides += "  - Order Distance Points\n"; overrideCount++; }
+   if(InpPriceTolerancePercent >= 0.0) { overrides += "  - Price Tolerance Percent\n"; overrideCount++; }
    if(InpSlippagePoints >= 0) { overrides += "  - Slippage Points\n"; overrideCount++; }
    if(InpEntryOffsetPoints >= 0) { overrides += "  - Entry Offset Points\n"; overrideCount++; }
    if(InpUseTrailingTP != -1) { overrides += "  - Use Trailing TP\n"; overrideCount++; }

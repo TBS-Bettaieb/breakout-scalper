@@ -176,6 +176,47 @@ public:
       
       return true;
      }
+
+
+
+
+     bool HasFVGBetweenEntryAndSL(const double entryPrice, const double stopLoss, const bool isBuy)
+     {
+        if(!m_enabled || m_detector == NULL)
+           return false;
+
+        double rangeHigh = MathMax(entryPrice, stopLoss);
+        double rangeLow  = MathMin(entryPrice, stopLoss);
+
+        FVGInfo fvgs[];
+        if(isBuy)
+           m_detector.GetBullishFVGs(fvgs, true);
+        else
+           m_detector.GetBearishFVGs(fvgs, true);
+
+        int fvgsCount = ArraySize(fvgs);
+        int maxCheck = MathMin(fvgsCount, 20);
+
+        for(int i = 0; i < maxCheck; i++)
+        {
+           if(!fvgs[i].IsValid)
+              continue;
+
+           double fvgHigh = fvgs[i].top;
+           double fvgLow  = fvgs[i].bottom;
+           if(fvgHigh < fvgLow)
+           {
+              double tmp = fvgHigh;
+              fvgHigh = fvgLow;
+              fvgLow = tmp;
+           }
+
+           if(rangeHigh >= fvgLow && rangeLow <= fvgHigh)
+              return true;
+        }
+
+        return false;
+     }
   };
 
 #endif // __FVG_TRADE_FILTER_MQH__
