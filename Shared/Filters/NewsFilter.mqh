@@ -93,7 +93,7 @@ bool CheckUpcomingNews(
    
    // Récupérer le calendrier économique
    MqlCalendarValue values[];
-   datetime starttime = TimeGMT();
+   datetime starttime = TimeCurrent();
    datetime endtime = starttime + 86400 * daysLookup;
    
    if(!CalendarValueHistory(values, starttime, endtime)) 
@@ -122,7 +122,7 @@ bool CheckUpcomingNews(
             datetime newsTime = values[i].time;
             int secondsBefore = stopBeforeMin * 60;
             
-            if(newsTime - TimeGMT() < secondsBefore)
+            if(newsTime - TimeCurrent() < secondsBefore)
             {
                return true;
             }
@@ -283,7 +283,8 @@ public:
          datetime todayStart = StructToTime(dt);
          int loaded = LoadNewsFromCSV(todayStart);
          string dateStr = TimeToString(todayStart, TIME_DATE);
-         Print(m_logPrefix + "Loaded " + IntegerToString(loaded) + " events for " + dateStr);
+         Print(m_logPrefix + "✅ Loaded " + IntegerToString(loaded) + " events for " + dateStr + 
+               " (currencies: " + (m_currencies == "" ? "ALL" : m_currencies) + ")");
          if(loaded <= 0)
          {
             Print(m_logPrefix + "\xE2\x9A\xA0\xEF\xB8\x8F WARNING: No CSV events for today or file missing. NewsFilter may be inactive in backtest.");
@@ -336,13 +337,13 @@ public:
 
       // Vérifier si on attend après une actualité
       if(m_tradingDisabledNews && 
-         TimeGMT() - m_lastNewsAvoided < m_startTradingMin * 60)
+         TimeCurrent() - m_lastNewsAvoided < m_startTradingMin * 60)
       {
          // Logging anti-spam
-         if(TimeGMT() - m_lastLogTime >= 60)
+         if(TimeCurrent() - m_lastLogTime >= 60)
          {
             LogIfChanged(false, StringFormat("Waiting %d min after news before resuming", m_startTradingMin));
-            m_lastLogTime = TimeGMT();
+            m_lastLogTime = TimeCurrent();
             m_lastBlockReason = "Waiting after news event";
          }
          return false;
@@ -506,6 +507,10 @@ private:
          if(eventTime < dayStart || eventTime >= dayEnd)
             continue;
 
+         // Filtrer par devise si configurée
+         if(m_currencies != "" && StringFind(m_currencies, currency) < 0)
+            continue;
+
          int size = ArraySize(m_newsEvents);
          ArrayResize(m_newsEvents, size + 1);
          m_newsEvents[size].time = eventTime;
@@ -585,7 +590,8 @@ private:
 
       int loaded = LoadNewsFromCSV(todayStart);
       string dateStr = TimeToString(todayStart, TIME_DATE);
-      Print(m_logPrefix + "Loaded " + IntegerToString(loaded) + " events for " + dateStr);
+      Print(m_logPrefix + "✅ Loaded " + IntegerToString(loaded) + " events for " + dateStr + 
+            " (currencies: " + (m_currencies == "" ? "ALL" : m_currencies) + ")");
       return (loaded > 0);
    }
 
@@ -601,7 +607,7 @@ private:
       
       // Récupérer le calendrier économique
       MqlCalendarValue values[];
-      datetime starttime = TimeGMT();
+      datetime starttime = TimeCurrent();
       datetime endtime = starttime + 86400 * m_daysLookup;
       
       if(!CalendarValueHistory(values, starttime, endtime)) 
@@ -630,7 +636,7 @@ private:
                datetime newsTime = values[i].time;
                int secondsBefore = m_stopBeforeMin * 60;
                
-               if(newsTime - TimeGMT() < secondsBefore)
+               if(newsTime - TimeCurrent() < secondsBefore)
                {
                   m_lastNewsAvoided = newsTime;
                   m_tradingDisabledNews = true;
@@ -639,10 +645,10 @@ private:
                                      TimeToString(newsTime, TIME_MINUTES);
                   
                   // Logging anti-spam
-                  if(TimeGMT() - m_lastLogTime >= 60)
+                  if(TimeCurrent() - m_lastLogTime >= 60)
                   {
                      LogIfChanged(false, "Trading disabled due to news: " + m_lastNewsMessage);
-                     m_lastLogTime = TimeGMT();
+                     m_lastLogTime = TimeCurrent();
                   }
                   
                   return true;
