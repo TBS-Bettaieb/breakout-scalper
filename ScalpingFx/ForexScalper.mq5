@@ -61,6 +61,9 @@
 #define NEWS_SEPARATOR         COMMA    // COMMA ou SEMICOLON
 #define NEWS_BLOCK_MSG         "📰 TRADING PAUSED - High Impact News Event"
 
+// 🔍 FVG MEMORY DEBUG CONFIGURATION
+#define FVG_MEMORY_DEBUG       false    // 🔍 FVG Memory Debug Mode
+
 // 🚨 ALERT MESSAGES
 #define HOUR_BLOCK_MSG         "⏰ TRADING PAUSED - Outside Trading Hours"
 #define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
@@ -73,6 +76,7 @@
 // Include the bot engine (all logic is here)
 #include "core/ForexScalperBot.mqh"
 #include "../Shared/Logger.mqh"
+#include "common/Filters/FVGMemoryTracker.mqh"
 
 // Global bot instance
 ForexScalperBot* bot = NULL;
@@ -127,6 +131,9 @@ int OnInit()
    config.newsSeparator = NEWS_SEPARATOR;
    config.newsBlockMsg = NEWS_BLOCK_MSG;
    
+   // 🔍 Activer le tracking mémoire FVG
+   FVGMemoryTracker::SetDebugMode(FVG_MEMORY_DEBUG);
+   
    // Logging Configuration
    config.logLevel = LOG_INFO;
    
@@ -172,6 +179,20 @@ void OnTick()
    if(bot != NULL)
    {
       bot.OnTick();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Chart event function                                             |
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+{
+   if(id == CHARTEVENT_KEYDOWN)
+   {
+      if(lparam == 'M') // Touche M = Memory report
+      {
+         FVGMemoryTracker::FullReport();
+      }
    }
 }
 //+------------------------------------------------------------------+

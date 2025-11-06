@@ -17,6 +17,7 @@
 #include "ScalpingFx/Core/ForexScalperBot.mqh"
 #include "ScalpingFx/common/ConfigLoader.mqh"
 #include "Shared/Logger.mqh"
+#include "ScalpingFx/common/Filters/FVGMemoryTracker.mqh"
 
 //+------------------------------------------------------------------+
 //| INPUT PARAMETERS - All configurable                              |
@@ -94,6 +95,9 @@ input string   InpBothBlockMsg = "";         // Both Block Message (empty = use 
 
 input group "🔧 LOGGING"
 input int      InpLogLevel = -1;            // Log Level (-1=config, 0=NONE, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG)
+
+input group "🔍 FVG MEMORY DEBUG"
+input bool     InpFVGMemoryDebug = true;   // 🔍 FVG Memory Debug Mode
 
 // Global variables
 CConfigManager* configManager = NULL;
@@ -327,6 +331,9 @@ int OnInit()
       Logger::SetLevel(config.logLevel);
    }
    
+   // 🔍 Activer le tracking mémoire FVG
+   FVGMemoryTracker::SetDebugMode(InpFVGMemoryDebug);
+   
    // Log which values were overridden
    LogInputOverrides();
    
@@ -389,6 +396,20 @@ void OnTick()
    if(bot != NULL)
    {
       bot.OnTick();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Chart event function                                             |
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+{
+   if(id == CHARTEVENT_KEYDOWN)
+   {
+      if(lparam == 'M') // Touche M = Memory report
+      {
+         FVGMemoryTracker::FullReport();
+      }
    }
 }
 

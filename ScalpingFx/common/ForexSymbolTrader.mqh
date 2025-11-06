@@ -15,6 +15,7 @@
 #include "../../Shared/TrailingTP_System.mqh"
 #include "orderManager.mqh"
 #include "Filters/FVGTradeFilter.mqh"
+#include "Filters/FVGMemoryTracker.mqh"
 
 #include "CounterManager.mqh"
 
@@ -150,6 +151,17 @@ public:
       m_useFvgFilter = useFvgFilter;
       m_fvgFilter.Init(m_symbol, m_timeframe, m_useFvgFilter);
       
+      // 🔍 Tracker l'initialisation FVG
+      if(m_useFvgFilter)
+      {
+         FVGMemoryTracker::TrackAllocation(
+            m_symbol + "_FVGFilter",
+            1,
+            sizeof(FVGTradeFilter),
+            "ForexSymbolTrader::Constructor"
+         );
+      }
+      
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
       m_trade.SetDeviationInPoints(m_slippagePoints);
@@ -189,9 +201,15 @@ public:
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~ForexSymbolTrader()
-   {
-      // Cleanup Trailing TP
+    ~ForexSymbolTrader()
+    {
+       // 🔍 Tracker la libération FVG
+       if(m_useFvgFilter)
+       {
+          FVGMemoryTracker::TrackDeallocation(m_symbol + "_FVGFilter");
+       }
+       
+       // Cleanup Trailing TP
       for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
          if(m_positionTrailings[i].trailing != NULL) {
             delete m_positionTrailings[i].trailing;
@@ -222,6 +240,10 @@ public:
       
 
       m_fvgFilter.OnNewBar();
+      
+      // 🔍 Rapport mémoire périodique
+      FVGMemoryTracker::PeriodicReport();
+      
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
       // Mettre à jour les compteurs
