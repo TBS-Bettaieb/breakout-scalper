@@ -780,12 +780,8 @@ public:
             ArrayResize(result, k + 1);
             result[k] = m_fvgList[i];
          }
-  
-  // Undefine local logging macros to avoid leaking into includers
-  #undef LOG_ERROR
-  #undef LOG_WARNING
-     }
-  }
+      }
+   }
    
    //+------------------------------------------------------------------+
    //| Réinitialise complètement la liste                               |

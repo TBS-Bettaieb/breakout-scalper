@@ -108,10 +108,12 @@ public:
       else
          m_detector.GetBearishFVGs(fvgs, true);
 
-      for(int i = 0; i < ArraySize(fvgs); i++)
+      int fvgsCount = ArraySize(fvgs);
+      for(int i = 0; i < fvgsCount; i++)
         {
          if(!fvgs[i].IsValid) continue;
 
+         // S'assurer que fvgHigh >= fvgLow (normalisation si données inversées)
          double fvgHigh = fvgs[i].top;
          double fvgLow  = fvgs[i].bottom;
          if(fvgHigh < fvgLow)
