@@ -473,7 +473,7 @@ bool LoadNewsOnly()
    // NewsFilter UNIQUEMENT: "USD,EUR" / "NFP,PMI,Interest Rate" 
    // 30min avant / 10min après / 7 jours de lookup
    NewsFilter* nf = new NewsFilter();
-   if(nf == NULL || !nf.Initialize(true, "USD,EUR", "NFP,PMI,Interest Rate", 30, 10, 7, NEWS_COMMA))
+   if(nf == NULL || !nf.Initialize(true, "USD,EUR", "", 30, 10, 7, NEWS_COMMA))
    {
       Print("❌ Échec initialisation NewsFilter");
       if(nf != NULL) delete nf;

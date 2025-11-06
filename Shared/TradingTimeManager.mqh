@@ -380,7 +380,7 @@ private:
                string alertMessage = GetBlockMessage(newStatus);
                color alertColor = GetBlockColor(newStatus);
                
-               m_chartManager.ShowAlert(alertMessage, alertColor, 18);
+               m_chartManager.ShowAlert(alertMessage, alertColor, 12);
                m_lastAlertTime = currentTime;
                
                if(m_verboseLogging && statusChanged)

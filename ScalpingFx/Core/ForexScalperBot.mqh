@@ -9,7 +9,6 @@
 #include "../../Shared/TradingUtils.mqh"
 #include "../../Shared/TradingTimeManager.mqh"
 #include "../../Shared/ChartManager.mqh"
-#include "../../Shared/NewsFilterManager.mqh"
 #include "../../Shared/Logger.mqh"
 #include "../common/BotConfig.mqh"
 #include "../common/ForexSymbolTrader.mqh"
@@ -26,7 +25,6 @@ private:
    ChartManager*     m_chartManager;
    TradingTimeManager* m_timeManager;
    RiskMultiplierManager* m_riskMultiplierManager;
-   NewsFilterManager* m_newsFilterManager;
    ForexSymbolTrader* m_symbolTraders[];
    string            m_symbols[];
    int               m_totalSymbols;
@@ -40,7 +38,6 @@ public:
       m_chartManager = NULL;
       m_timeManager = NULL;
       m_riskMultiplierManager = NULL;
-      m_newsFilterManager = NULL;
       m_totalSymbols = 0;
       m_tickCount = 0;
    }
@@ -84,16 +81,12 @@ public:
       if(!InitializeChartManager())
          return false;
       
-      // Step 7: Initialize Time Manager
+      // Step 7: Initialize Time Manager (includes NewsFilter)
       if(!InitializeTimeManager())
          return false;
       
       // Step 8: Initialize Risk Multiplier Manager
       if(!InitializeRiskMultiplier())
-         return false;
-      
-      // Step 9: Initialize News Filter Manager
-      if(!InitializeNewsFilter())
          return false;
       
       // Final summary
@@ -133,15 +126,7 @@ public:
          Logger::Success("✅ Risk Multiplier Manager cleaned up");
       }
       
-      // Cleanup News Filter Manager
-      if(m_newsFilterManager != NULL)
-      {
-         delete m_newsFilterManager;
-         m_newsFilterManager = NULL;
-         Logger::Success("✅ News Filter Manager cleaned up");
-      }
-      
-      // Cleanup Time Manager
+      // Cleanup Time Manager (includes NewsFilter now)
       if(m_timeManager != NULL)
       {
          delete m_timeManager;
@@ -176,20 +161,18 @@ public:
          AdjustAllPositionSizes(currentMultiplier);
       }
       
-      // Check trading permissions
-      bool timeAllowed = m_timeManager.IsTradingAllowed();
-      bool newsAllowed = !m_config.useNewsFilter || 
-                         (m_newsFilterManager != NULL && 
-                          !m_newsFilterManager.IsNewsBlocking());
+      // Check trading permissions (NewsFilter is now integrated in TradingTimeManager)
+      bool tradingAllowed = m_timeManager.IsTradingAllowed();
       
-      bool tradingAllowed = timeAllowed && newsAllowed;
-      
-      // 🆕 Vérifier changement de statut news
-      if(m_newsFilterManager != NULL && m_newsFilterManager.HasStatusChanged())
+      // 🔍 DEBUG: Logger les permissions de trading (toutes les 100 ticks pour éviter spam)
+      static int debugTickCount = 0;
+      debugTickCount++;
+      if(debugTickCount % 100 == 0 || !tradingAllowed)
       {
-         string newsStatus = m_newsFilterManager.GetStatusMessage();
-         if(newsStatus != "")
-            Logger::Info("📰 NEWS ALERT: " + newsStatus);
+         Print("[ForexScalperBot] 🔍 DEBUG OnTick:");
+         Print("   useNewsFilter = ", m_config.useNewsFilter);
+         Print("   tradingAllowed = ", tradingAllowed);
+         Print("   status = ", m_timeManager.GetStatusDescription());
       }
       
       // 🆕 Obtenir multiplicateur actuel
@@ -419,6 +402,48 @@ private:
          Logger::Info("✅ TimeRange Filter initialized: " + timeRangeStr);
       }
       
+      // 🆕 AJOUTER : NewsFilter dans TradingTimeManager
+      if(m_config.useNewsFilter)
+      {
+         NewsFilter* nf = new NewsFilter();
+         if(nf == NULL)
+         {
+            Logger::Error("❌ Failed to create NewsFilter");
+            return false;
+         }
+         
+         // Convertir ENUM_SEPARATOR vers ENUM_NEWS_SEPARATOR
+         ENUM_NEWS_SEPARATOR newsSep = (m_config.newsSeparator == COMMA) ? NEWS_COMMA : NEWS_SEMICOLON;
+         
+         if(!nf.Initialize(
+            true,  // enabled
+            m_config.newsCurrencies,
+            m_config.keyNewsEvents,
+            m_config.stopBeforeNewsMin,
+            m_config.startAfterNewsMin,
+            m_config.newsLookupDays,
+            newsSep
+         ))
+         {
+            Logger::Error("❌ Failed to initialize NewsFilter");
+            delete nf;
+            return false;
+         }
+         
+         if(!m_timeManager.AddFilter(nf))
+         {
+            Logger::Error("❌ Failed to add NewsFilter to TradingTimeManager");
+            delete nf;
+            return false;
+         }
+         
+         Logger::Info("✅ NewsFilter added to TradingTimeManager");
+         Logger::Info("   Currencies: " + m_config.newsCurrencies);
+         Logger::Info("   Events: " + m_config.keyNewsEvents);
+         Logger::Info("   Stop Before: " + IntegerToString(m_config.stopBeforeNewsMin) + " min");
+         Logger::Info("   Resume After: " + IntegerToString(m_config.startAfterNewsMin) + " min");
+      }
+      
       // Configuration finale
       m_timeManager.SetVerboseLogging(true);
       m_timeManager.SetAlertMessages(m_config.hourBlockMsg, m_config.dayBlockMsg, 
@@ -467,38 +492,6 @@ private:
       return true;
    }
    
-   //--- Initialize News Filter Manager
-   bool InitializeNewsFilter()
-   {
-      m_newsFilterManager = new NewsFilterManager();
-      if(m_newsFilterManager == NULL)
-      {
-         Logger::Warning("⚠️ Warning: News Filter Manager creation failed");
-         return true; // Non-critical
-      }
-      
-      m_newsFilterManager.Initialize(
-         m_config.useNewsFilter,
-         m_config.newsCurrencies,
-         m_config.keyNewsEvents,
-         m_config.stopBeforeNewsMin,
-         m_config.startAfterNewsMin,
-         m_config.newsLookupDays,
-         m_config.newsSeparator
-      );
-      
-      if(m_config.useNewsFilter)
-      {
-         Logger::Info("📰 NEWS FILTER ENABLED");
-         Logger::Info("   Currencies: " + m_config.newsCurrencies);
-         Logger::Info("   Events: " + m_config.keyNewsEvents);
-         Logger::Info("   Stop Before: " + IntegerToString(m_config.stopBeforeNewsMin) + " min");
-         Logger::Info("   Resume After: " + IntegerToString(m_config.startAfterNewsMin) + " min");
-      }
-      
-      return true;
-   }
-   
    //--- Print initialization summary
    void PrintInitializationSummary()
    {
@@ -518,10 +511,7 @@ private:
          Logger::Info("🚀 RISK MULTIPLIER: " + m_riskMultiplierManager.GetDetailedInfo());
       }
       
-      if(m_config.useNewsFilter && m_newsFilterManager != NULL)
-      {
-         Logger::Info("📰 NEWS FILTER: " + m_newsFilterManager.GetDetailedInfo());
-      }
+      // NewsFilter info is now included in TradingTimeManager.GetDetailedInfo()
       
       Logger::Info("═══════════════════════════════════════");
    }
@@ -567,17 +557,7 @@ private:
       
       // Determine color and build status
       color statusColor = clrGreen;
-      
-      // 🆕 Ajouter status News
-      string newsStatus = "";
-      if(m_newsFilterManager != NULL && m_config.useNewsFilter)
-      {
-         if(m_newsFilterManager.IsNewsBlocking())
-         {
-            newsStatus = m_newsFilterManager.GetStatusMessage();
-            statusColor = clrRed;
-         }
-      }
+      ENUM_TRADING_STATUS status = m_timeManager.GetCurrentStatus();
       
       // 🆕 Ajouter status Risk Multiplier
       string riskMultStatus = "";
@@ -586,17 +566,16 @@ private:
          riskMultStatus = m_riskMultiplierManager.GetStatusDescription();
       }
       
-      // Build combined status
-      if(newsStatus != "")
-         globalStatus = newsStatus + " | " + timeStatus + " | " + globalStatus;
-      else
-         globalStatus = timeStatus + " | " + globalStatus;
+      // Build combined status (News status is now included in timeStatus)
+      globalStatus = timeStatus + " | " + globalStatus;
       
       if(riskMultStatus != "")
          globalStatus = riskMultStatus + " | " + globalStatus;
-      ENUM_TRADING_STATUS status = m_timeManager.GetCurrentStatus();
       
-      if(status != TRADING_ACTIVE)
+      // Determine color based on status
+      if(status == TRADING_BLOCKED_NEWS)
+         statusColor = clrRed;
+      else if(status != TRADING_ACTIVE)
          statusColor = clrOrange;
       else if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.IsInActivePeriod())
          statusColor = clrYellow;

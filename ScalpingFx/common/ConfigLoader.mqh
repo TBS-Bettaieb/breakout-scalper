@@ -169,7 +169,7 @@ protected:
    // Setup news filter parameters
    void SetupNewsFilter(bool useNewsFilter, string currencies = "USD,EUR,GBP", 
                        string keyEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP",
-                       int stopBeforeMin = 30, int startAfterMin = 10, int lookupDays = 7)
+                       int stopBeforeMin = 10, int startAfterMin = 10, int lookupDays = 7)
    {
       m_config.useNewsFilter = useNewsFilter;
       m_config.newsCurrencies = currencies;
@@ -240,7 +240,7 @@ public:
       SetupTradingHours("07:00-21:00");
       SetupStrategyParams(5, 50, 80,10,15);
       SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
-      SetupNewsFilter(true);
+      SetupNewsFilter(true,"USD,GBP","");
       SetupFvgFilter(false);
       SetupBlockMessages();
       

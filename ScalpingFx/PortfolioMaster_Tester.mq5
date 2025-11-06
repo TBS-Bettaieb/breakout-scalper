@@ -70,7 +70,7 @@ int OnInit()
    g_stats.peakBalance = g_stats.initialBalance;
    g_stats.lowestBalance = g_stats.initialBalance;
    g_stats.totalTrades = 0;
-   g_stats.startTime = TimeCurrent();
+   g_stats.startTime = TimeGMT();
    
    Logger::Info("💰 Initial Capital: $" + DoubleToString(g_stats.initialBalance, 2));
    
@@ -211,7 +211,7 @@ void OnDeinit(const int reason)
    double maxDrawdownAbs = g_stats.peakBalance - g_stats.lowestBalance;
    double maxDrawdownPct = (maxDrawdownAbs / g_stats.peakBalance) * 100;
    
-   datetime endTime = TimeCurrent();
+   datetime endTime = TimeGMT();
    int testDuration = (int)((endTime - g_stats.startTime) / 86400); // Days
    
    Logger::Info("📊 FINAL PORTFOLIO STATISTICS");
@@ -412,7 +412,7 @@ string GetPerformanceRating(double profitPercent, double maxDrawdownPct)
 //+------------------------------------------------------------------+
 void SaveTestConfiguration(double totalProfit, double profitPercent, double maxDrawdownPct)
 {
-   datetime currentTime = TimeCurrent();
+   datetime currentTime = TimeGMT();
    MqlDateTime dt;
    TimeToStruct(currentTime, dt);
    string timestamp = StringFormat("%04d%02d%02d_%02d%02d", 
