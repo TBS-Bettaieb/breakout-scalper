@@ -208,6 +208,10 @@ private:
    };
    NewsEvent               m_newsEvents[];
 
+   // Cache quotidien (CSV)
+   datetime                m_lastLoadedDate;    // Minuit du dernier jour chargé
+   int                     m_eventsLoadedToday; // Nombre d'événements du jour
+
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
@@ -235,6 +239,8 @@ public:
       m_csvFileName = "NewsCalendar_Optimized.csv";
       m_csvLoaded = false;
       ArrayResize(m_newsEvents, 0);
+      m_lastLoadedDate = 0;
+      m_eventsLoadedToday = 0;
    }
 
    //+------------------------------------------------------------------+
@@ -272,12 +278,16 @@ public:
       if(m_useCSV)
       {
          Print(m_logPrefix + "\xF0\x9F\x93\x8A TESTER MODE: Using CSV file: " + m_csvFileName);
-         if(!LoadNewsFromCSV())
+         // Précharger les événements du jour courant
+         MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); dt.hour = 0; dt.min = 0; dt.sec = 0;
+         datetime todayStart = StructToTime(dt);
+         int loaded = LoadNewsFromCSV(todayStart);
+         string dateStr = TimeToString(todayStart, TIME_DATE);
+         Print(m_logPrefix + "Loaded " + IntegerToString(loaded) + " events for " + dateStr);
+         if(loaded <= 0)
          {
-            Print(m_logPrefix + "\xE2\x9A\xA0\xEF\xB8\x8F WARNING: Could not load CSV. NewsFilter inactive in backtest.");
-            return false;
+            Print(m_logPrefix + "\xE2\x9A\xA0\xEF\xB8\x8F WARNING: No CSV events for today or file missing. NewsFilter may be inactive in backtest.");
          }
-         Print(m_logPrefix + "\xE2\x9C\x85 Loaded " + IntegerToString(ArraySize(m_newsEvents)) + " events from CSV");
       }
       else
       {
@@ -436,10 +446,13 @@ private:
    }
 
    // Chargement des événements depuis un CSV
-   bool LoadNewsFromCSV()
+   int LoadNewsFromCSV(datetime targetDate = 0)
    {
-      if(m_csvLoaded)
-         return true;
+      // Déterminer le jour cible (minuit)
+      datetime baseTime = (targetDate == 0 ? TimeCurrent() : targetDate);
+      MqlDateTime dt; TimeToStruct(baseTime, dt); dt.hour = 0; dt.min = 0; dt.sec = 0;
+      datetime dayStart = StructToTime(dt);
+      datetime dayEnd = dayStart + 86400;
 
       ArrayResize(m_newsEvents, 0);
 
@@ -457,7 +470,9 @@ private:
          Print(m_logPrefix + "Expected paths: " +
               TerminalInfoString(TERMINAL_COMMONDATA_PATH) + "\\Files\\" + m_csvFileName + " OR " +
               TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\Files\\" + m_csvFileName);
-         return false;
+         m_csvLoaded = false;
+         m_eventsLoadedToday = 0;
+         return 0;
       }
 
       // Lire et ignorer l'en-tête
@@ -487,6 +502,10 @@ private:
             continue;
          }
 
+         // Filtrer : uniquement les événements du jour [dayStart, dayEnd)
+         if(eventTime < dayStart || eventTime >= dayEnd)
+            continue;
+
          int size = ArraySize(m_newsEvents);
          ArrayResize(m_newsEvents, size + 1);
          m_newsEvents[size].time = eventTime;
@@ -498,12 +517,16 @@ private:
 
       FileClose(fileHandle);
       m_csvLoaded = true;
-      return count > 0;
+      m_lastLoadedDate = dayStart;
+      m_eventsLoadedToday = count;
+      return count;
    }
 
    // Vérification via CSV
    bool CheckUpcomingNewsFromCSV()
    {
+      // Rafraîchir si changement de jour ou pas encore chargé
+      RefreshDailyNews(TimeCurrent());
       if(!m_csvLoaded)
          return false;
 
@@ -522,7 +545,7 @@ private:
             continue;
 
          int timeDiff = (int)(m_newsEvents[i].time - currentTime);
-         if(timeDiff < 0 || timeDiff > m_daysLookup * 86400)
+         if(timeDiff < 0)
             continue;
 
          for(int j = 0; j < k; j++)
@@ -548,6 +571,22 @@ private:
          }
       }
       return false;
+   }
+
+   // Rechargement quotidien des événements CSV
+   bool RefreshDailyNews(datetime currentTime)
+   {
+      // Calculer minuit du jour courant
+      MqlDateTime dt; TimeToStruct(currentTime, dt); dt.hour = 0; dt.min = 0; dt.sec = 0;
+      datetime todayStart = StructToTime(dt);
+
+      if(m_csvLoaded && m_lastLoadedDate == todayStart)
+         return true; // Déjà chargé pour aujourd'hui
+
+      int loaded = LoadNewsFromCSV(todayStart);
+      string dateStr = TimeToString(todayStart, TIME_DATE);
+      Print(m_logPrefix + "Loaded " + IntegerToString(loaded) + " events for " + dateStr);
+      return (loaded > 0);
    }
 
    // Vérification via API (ancienne implémentation)

@@ -163,7 +163,15 @@ void OnTick()
 {
    if(g_timeManager == NULL) return;
    
-   // Tester IsTradingAllowed() à chaque tick
+   // Vérifier s'il y a une nouvelle barre
+   static datetime lastBarTime = 0;
+   datetime currentBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
+   
+   // Tester seulement s'il y a une nouvelle barre
+   if(currentBarTime == lastBarTime) return;
+   lastBarTime = currentBarTime;
+   
+   // Tester IsTradingAllowed() à chaque nouvelle barre
    bool isAllowed = g_timeManager.IsTradingAllowed();
    ENUM_TRADING_STATUS currentStatus = g_timeManager.GetCurrentStatus();
    
