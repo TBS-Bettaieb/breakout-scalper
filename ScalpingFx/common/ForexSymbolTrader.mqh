@@ -251,7 +251,7 @@ public:
    //+------------------------------------------------------------------+
    void OnTick()
    {
-      // Vérifier si c'est une nouvelle barre
+      // 🔥 CRITIQUE: Vérifier nouvelle barre AVANT toute opération FVG
       if(!IsNewBar()) return;
       
       m_fvgFilter.OnNewBar();
@@ -259,15 +259,10 @@ public:
       // 🔍 Rapport mémoire périodique
       FVGMemoryTracker::PeriodicReport();
       
-      // 🆕 Nettoyer le cache FVG périodiquement (toutes les 10 barres)
-      static int barCount = 0;
-      barCount++;
-      if(barCount % 10 == 0)
-      {
-         CleanupCheckedOrdersCache();
-      }
+      // 🆕 Nettoyer le cache FVG À CHAQUE BARRE (pas toutes les 10)
+      CleanupCheckedOrdersCache();
       
-      // 🆕 Appeler CheckFvgDisqualifier UNE SEULE FOIS par barre (au lieu de chaque tick)
+      // 🆕 Vérifier FVG UNE SEULE FOIS par barre
       CheckFvgDisqualifier();
       
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
@@ -300,7 +295,7 @@ public:
       }
    }
 
-      //+------------------------------------------------------------------+
+   //+------------------------------------------------------------------+
    //| Vérifier et annuler les ordres disqualifiés par le filtre FVG    |
    //+------------------------------------------------------------------+
    bool CheckFvgDisqualifier()
@@ -308,15 +303,49 @@ public:
       if(!m_fvgFilter.GetEnabled())
          return false;
 
-      // 🔍 Tracker la taille actuelle du cache (seulement si debug activé)
+      // 🔥 PROTECTION 1: Skip si aucun ordre pending
+      int totalOrders = OrdersTotal();
+      if(totalOrders == 0)
+         return false;
+
+      // 🔥 PROTECTION 2: Warning si trop d'ordres
+      if(totalOrders > 50)
+      {
+         static datetime lastWarning = 0;
+         if(TimeCurrent() - lastWarning > 3600)
+         {
+            Print("⚠️ [", m_symbol, "] Trop d'ordres pending: ", totalOrders, " - Performance affectée");
+            lastWarning = TimeCurrent();
+         }
+      }
+
+      // 🔥 PROTECTION 3: Limiter le nombre de vérifications FVG par barre
+      static int checksThisBar = 0;
+      static datetime lastBarTime = 0;
+      datetime currentBarTime = iTime(m_symbol, m_timeframe, 0);
+      
+      if(currentBarTime != lastBarTime)
+      {
+         checksThisBar = 0;
+         lastBarTime = currentBarTime;
+      }
+      
+      if(checksThisBar >= 10)
+      {
+         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (10/barre)");
+         return false;
+      }
+      checksThisBar++;
+
+      // 🔍 Tracker la taille actuelle du cache (léger)
       FVGMemoryTracker::TrackAllocation(
          m_symbol + "_CheckedOrdersCache",
          ArraySize(m_checkedOrders),
          sizeof(OrderFVGCheck),
-         "CheckFvgDisqualifier::Monitoring"
+         "CheckFvgDisqualifier"
       );
 
-      // Utiliser OrderManager::FindTicketViolatingPriceTolerance pour trouver un ordre dépassant le priceTolerance
+      // Trouver un ordre violant la tolérance
       ulong violatingTicket = 0;
       bool isBuy = false;
       double priceTolerance = m_orderDistPoints * m_point * 0.15;
@@ -325,27 +354,31 @@ public:
       
       if(FindTicketViolatingPriceTolerance(priceTolerance, violatingTicket, isBuy, orderPrice, orderSL))
       {
-         // 🆕 Vérifier si déjà vérifié récemment (évite re-vérifications inutiles)
+         // Vérifier si déjà vérifié récemment
          if(WasRecentlyChecked(violatingTicket))
             return false;
          
+         // Vérifier avec le filtre FVG
          bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
 
          if(!isAllowed)
          {
+            Print("🚫 FVG DISQUALIFIED [", m_symbol, "] ", (isBuy ? "BUY" : "SELL"),
+                  " Stop #", violatingTicket, " | Entry: ", DoubleToString(orderPrice, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)));
+            
             if(CancelOrderById(violatingTicket))
             {
-               // 🆕 Retirer du cache après annulation
                RemoveFromCheckedList(violatingTicket);
+               return true;
             }
             else
             {
-               Logger::Error(StringFormat("❌ Erreur suppression ordre #%I64u | Erreur: %d", violatingTicket, GetLastError()));
+               Print("❌ Erreur annulation ordre #", violatingTicket, " | Erreur: ", GetLastError());
             }
          }
          else
          {
-            // 🆕 FVG OK - marquer comme vérifié pour éviter re-vérifications
+            // FVG OK - marquer comme vérifié
             MarkAsChecked(violatingTicket);
          }
       }
@@ -354,48 +387,58 @@ public:
    }
 
    
-     //+------------------------------------------------------------------+
-  //| Retourner un ticket violant priceTolerance (+ sens isBuy)        |
-  //+------------------------------------------------------------------+
-  // Modifié pour retourner également le StopLoss de l'ordre (slOrder)
-  bool FindTicketViolatingPriceTolerance(const double priceTolerance, ulong &ticket, bool &isBuy, double &orderPrice, double &slOrder)
-  {
-   ticket = 0;
-   isBuy = false;
-   slOrder = 0.0;
-   orderPrice=0.0;
-   bool shouldCheckFVG = false;
-   double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
-     {
-      ulong t = OrderGetTicket(i);
-      if(!OrderSelect(t)) continue;
-      if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
-      if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
-      orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
-      slOrder = OrderGetDouble(ORDER_SL);
-      long orderType = OrderGetInteger(ORDER_TYPE);
-      double distanceToPrice = MathAbs(currentPrice - orderPrice);
-
-      if(distanceToPrice >= priceTolerance)
-        {
-         ticket = t;
-               if(orderType == ORDER_TYPE_BUY_STOP)
-              {
-               isBuy = true;
-               shouldCheckFVG = true;
-              }
-             else if(orderType == ORDER_TYPE_SELL_STOP)
-              {
-               isBuy = false;
-               shouldCheckFVG = true;
-              }
-              if(shouldCheckFVG)
-               return true;
-        }
-     }
-   return shouldCheckFVG;
-  }
+   //+------------------------------------------------------------------+
+   //| Retourner un ticket violant priceTolerance (+ sens isBuy)        |
+   //+------------------------------------------------------------------+
+   bool FindTicketViolatingPriceTolerance(const double priceTolerance, 
+                                          ulong &ticket, 
+                                          bool &isBuy, 
+                                          double &orderPrice, 
+                                          double &slOrder)
+   {
+      ticket = 0;
+      isBuy = false;
+      slOrder = 0.0;
+      orderPrice = 0.0;
+      
+      double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+      int totalOrders = OrdersTotal();
+      
+      // 🔥 OPTIMISATION: Limiter le scan à 20 ordres max
+      int maxScan = MathMin(totalOrders, 20);
+      
+      for(int i = totalOrders - 1; i >= totalOrders - maxScan; i--)
+      {
+         if(i < 0) break;
+         
+         ulong t = OrderGetTicket(i);
+         if(!OrderSelect(t)) continue;
+         
+         if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
+         if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
+         
+         long orderType = OrderGetInteger(ORDER_TYPE);
+         
+         // Vérifier UNIQUEMENT les Stop orders
+         if(orderType != ORDER_TYPE_BUY_STOP && orderType != ORDER_TYPE_SELL_STOP)
+            continue;
+         
+         orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+         slOrder = OrderGetDouble(ORDER_SL);
+         
+         double distanceToPrice = MathAbs(currentPrice - orderPrice);
+         
+         // 🔥 FIX CRITIQUE: <= au lieu de >= (vérifier si prix s'approche)
+         if(distanceToPrice <= priceTolerance)
+         {
+            ticket = t;
+            isBuy = (orderType == ORDER_TYPE_BUY_STOP);
+            return true;
+         }
+      }
+      
+      return false;
+   }
 
    //+------------------------------------------------------------------+
    //| 🆕 Trailing Stop Loss DYNAMIQUE basé sur les coûts réels        |
@@ -1151,36 +1194,47 @@ private:
          }
       }
       
-      // 🆕 Limiter la taille du cache (max 100 entrées)
-      const int MAX_CACHE_SIZE = 100;
+      // 🔥 PROTECTION: Limite stricte de 50 entrées
+      const int MAX_CACHE_SIZE = 50;
       int currentSize = ArraySize(m_checkedOrders);
       
       if(currentSize >= MAX_CACHE_SIZE)
       {
-         // Supprimer les 20% les plus anciens (FIFO)
-         int toRemove = MAX_CACHE_SIZE / 5; // 20%
-         for(int i = 0; i < toRemove; i++)
+         Print("⚠️ [", m_symbol, "] Cache FVG plein (", MAX_CACHE_SIZE, ") - suppression plus vieille");
+         
+         // Supprimer la plus vieille entrée
+         datetime oldestTime = m_checkedOrders[0].lastCheckTime;
+         int oldestIndex = 0;
+         
+         for(int i = 1; i < currentSize; i++)
          {
-            for(int j = 0; j < ArraySize(m_checkedOrders) - 1; j++)
+            if(m_checkedOrders[i].lastCheckTime < oldestTime)
             {
-               m_checkedOrders[j] = m_checkedOrders[j + 1];
+               oldestTime = m_checkedOrders[i].lastCheckTime;
+               oldestIndex = i;
             }
-            ArrayResize(m_checkedOrders, ArraySize(m_checkedOrders) - 1);
          }
+         
+         // Décaler pour supprimer la plus vieille
+         for(int j = oldestIndex; j < currentSize - 1; j++)
+         {
+            m_checkedOrders[j] = m_checkedOrders[j + 1];
+         }
+         ArrayResize(m_checkedOrders, currentSize - 1);
       }
       
-      // Ajouter à la liste
+      // Ajouter la nouvelle entrée
       int size = ArraySize(m_checkedOrders);
       ArrayResize(m_checkedOrders, size + 1);
       m_checkedOrders[size].ticket = ticket;
       m_checkedOrders[size].lastCheckTime = TimeCurrent();
       
-      // 🔍 Tracker l'ajout au cache
+      // 🔍 Tracker (seulement si debug)
       FVGMemoryTracker::TrackAllocation(
          m_symbol + "_CheckedOrdersCache",
          ArraySize(m_checkedOrders),
          sizeof(OrderFVGCheck),
-         "MarkAsChecked::GrowCache"
+         "MarkAsChecked"
       );
    }
 
@@ -1214,20 +1268,35 @@ private:
    }
    
    //+------------------------------------------------------------------+
-   //| Nettoyer le cache des ordres vérifiés (supprimer entrées > 5 min)|
+   //| Nettoyer le cache des ordres vérifiés (optimisé)                 |
    //+------------------------------------------------------------------+
    void CleanupCheckedOrdersCache()
    {
       if(!m_useFvgFilter)
          return;
       
-      datetime currentTime = TimeCurrent();
-      const int MAX_AGE_SECONDS = 300; // 5 minutes
-      
       int originalSize = ArraySize(m_checkedOrders);
-      int kept = 0;
       
-      // Garder seulement les entrées récentes (< 5 minutes)
+      // 🔥 PROTECTION: Si > 100 entrées, purge agressive
+      if(originalSize > 100)
+      {
+         Print("🚨 [", m_symbol, "] Cache FVG CRITIQUE: ", originalSize, " entrées - PURGE FORCÉE");
+         ArrayResize(m_checkedOrders, 0);
+         
+         FVGMemoryTracker::TrackAllocation(
+            m_symbol + "_CheckedOrdersCache",
+            0,
+            sizeof(OrderFVGCheck),
+            "CleanupCheckedOrdersCache::EmergencyPurge"
+         );
+         return;
+      }
+      
+      // Si < 100, nettoyage normal (supprimer > 2 minutes)
+      datetime currentTime = TimeCurrent();
+      const int MAX_AGE_SECONDS = 120; // 2 minutes
+      
+      int kept = 0;
       for(int i = 0; i < originalSize; i++)
       {
          if(currentTime - m_checkedOrders[i].lastCheckTime < MAX_AGE_SECONDS)
@@ -1238,18 +1307,23 @@ private:
          }
       }
       
-      // Réduire la taille du array si nécessaire
       if(kept < originalSize)
       {
          ArrayResize(m_checkedOrders, kept);
          
-         // 🔍 Tracker le nettoyage
-         FVGMemoryTracker::TrackAllocation(
-            m_symbol + "_CheckedOrdersCache",
-            ArraySize(m_checkedOrders),
-            sizeof(OrderFVGCheck),
-            "CleanupCheckedOrdersCache::RemovedOld"
-         );
+         int removed = originalSize - kept;
+         if(removed > 0)
+         {
+            Print("🧹 [", m_symbol, "] Cache FVG nettoyé: ", removed, 
+                  " entrée(s) expirée(s) | Reste: ", kept);
+            
+            FVGMemoryTracker::TrackAllocation(
+               m_symbol + "_CheckedOrdersCache",
+               kept,
+               sizeof(OrderFVGCheck),
+               "CleanupCheckedOrdersCache::NormalClean"
+            );
+         }
       }
    }
    
