@@ -27,6 +27,8 @@
 //| - StartTradingMin=10 : reprendre 10 min après l'actualité       |
 //+------------------------------------------------------------------+
 #property strict
+// New architecture include
+#include "ITimeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Énumération des séparateurs de liste                             |
@@ -170,7 +172,7 @@ bool IsNewsAllowed(
 //+------------------------------------------------------------------+
 //| Classe de gestion des filtres par actualités                    |
 //+------------------------------------------------------------------+
-class NewsFilter
+class NewsFilter : public ITimeFilter
 {
 private:
    // Configuration
@@ -189,9 +191,27 @@ private:
    string                  m_newsToAvoid[];
    
    // Logging
-   datetime                m_lastLogTime;
-   string                  m_logPrefix;
    string                  m_lastBlockReason;
+   bool                    m_debugMode;           // Mode debug pour diagnostics
+
+   // Mode CSV (tester)
+   bool                    m_useCSV;           // Utiliser CSV en mode Strategy Tester
+   string                  m_csvFileName;      // Nom du fichier CSV
+   bool                    m_csvLoaded;        // CSV chargé avec succès
+
+   // Événements issus du CSV
+   struct NewsEvent
+   {
+      datetime time;
+      string   currency;
+      string   eventName;
+      string   impact;
+   };
+   NewsEvent               m_newsEvents[];
+
+   // Cache quotidien (CSV)
+   datetime                m_lastLoadedDate;    // Minuit du dernier jour chargé
+   int                     m_eventsLoadedToday; // Nombre d'événements du jour
 
 public:
    //+------------------------------------------------------------------+
@@ -211,7 +231,79 @@ public:
       m_lastNewsMessage = "";
       m_lastLogTime = 0;
       m_logPrefix = "[NewsFilter] ";
+      m_lastLoggedState = true;
+      m_lastLogTime = 0;
       m_lastBlockReason = "";
+      m_debugMode = false;
+
+      // CSV defaults and auto-detect tester mode
+      m_useCSV = (bool)MQLInfoInteger(MQL_TESTER);
+      m_csvFileName = "NewsCalendar_Optimized.csv";
+      m_csvLoaded = false;
+      ArrayResize(m_newsEvents, 0);
+      m_lastLoadedDate = 0;
+      m_eventsLoadedToday = 0;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NOUVELLE MÉTHODE: Initialize pour cohérence avec autres filtres |
+   //+------------------------------------------------------------------+
+   bool Initialize(
+      bool enabled,
+      string currencies,
+      string keywords,
+      int stopBeforeMin,
+      int startTradingMin,
+      int daysLookup,
+      ENUM_NEWS_SEPARATOR separator,
+      string csvFileName = "NewsCalendar_Optimized.csv"
+   )
+   {
+      m_useFilter = enabled;
+      m_currencies = currencies;
+      m_keywords = keywords;
+      m_stopBeforeMin = stopBeforeMin;
+      m_startTradingMin = startTradingMin;
+      m_daysLookup = daysLookup;
+      m_separator = separator;
+      m_csvFileName = csvFileName;
+      
+      if(!enabled)
+      {
+         Print(m_logPrefix + "NewsFilter is DISABLED");
+         return true;
+      }
+
+      // Auto-detect execution mode
+      m_useCSV = (bool)MQLInfoInteger(MQL_TESTER);
+
+      if(m_useCSV)
+      {
+         Print(m_logPrefix + "\xF0\x9F\x93\x8A TESTER MODE: Using CSV file: " + m_csvFileName);
+         // Précharger les événements du jour courant
+         MqlDateTime dt; TimeToStruct(TimeGMT(), dt); dt.hour = 0; dt.min = 0; dt.sec = 0;
+         datetime todayStart = StructToTime(dt);
+         int loaded = LoadNewsFromCSV(todayStart);
+         string dateStr = TimeToString(todayStart, TIME_DATE);
+         Print(m_logPrefix + "✅ Loaded " + IntegerToString(loaded) + " events for " + dateStr + 
+               " (currencies: " + (m_currencies == "" ? "ALL" : m_currencies) + ")");
+         if(loaded <= 0)
+         {
+            Print(m_logPrefix + "\xE2\x9A\xA0\xEF\xB8\x8F WARNING: No CSV events for today or file missing. NewsFilter may be inactive in backtest.");
+         }
+      }
+      else
+      {
+         Print(m_logPrefix + "\xF0\x9F\x94\xB4 LIVE MODE: Using Calendar API");
+      }
+
+      if(currencies != "" && keywords != "")
+      {
+         Print(m_logPrefix + "Initialized with currencies: " + currencies + 
+               ", keywords: " + keywords + 
+               ", stopBefore: " + IntegerToString(stopBeforeMin) + " min");
+      }
+      return true;
    }
 
    //+------------------------------------------------------------------+
@@ -236,15 +328,12 @@ public:
       m_separator = separator;
    }
 
-   void SetLogPrefix(string prefix)
-   {
-      m_logPrefix = prefix;
-   }
+   void SetLogPrefix(string prefix) { m_logPrefix = prefix; }
 
    //+------------------------------------------------------------------+
    //| Vérifications principales                                       |
    //+------------------------------------------------------------------+
-   bool IsTradingAllowed()
+   bool IsTradingAllowed() override
    {
       if(!m_useFilter) return true;
 
@@ -255,8 +344,7 @@ public:
          // Logging anti-spam
          if(TimeGMT() - m_lastLogTime >= 60)
          {
-            Print(m_logPrefix + "⏳ Attente ", m_startTradingMin, 
-                  " min après actualité avant reprise trading");
+            LogIfChanged(false, StringFormat("Waiting %d min after news before resuming", m_startTradingMin));
             m_lastLogTime = TimeGMT();
             m_lastBlockReason = "Waiting after news event";
          }
@@ -296,9 +384,21 @@ public:
       return "News: " + m_currencies + " | Keywords: " + m_keywords;
    }
 
-   bool IsEnabled() const
+   bool IsEnabled() const override
    {
       return m_useFilter;
+   }
+
+   virtual string GetDescription() const override
+   {
+      if(!m_useFilter) return "News: Disabled";
+      return "News: " + m_currencies + ", keywords: " + m_keywords;
+   }
+
+   virtual string GetStatusMessage() const override
+   {
+      if(!m_useFilter) return "NewsFilter: OFF";
+      return "NewsFilter: ON [" + m_currencies + "]";
    }
 
    // Obtenir les devises surveillées
@@ -331,18 +431,295 @@ public:
       return m_daysLookup;
    }
 
+   // NOUVELLES méthodes publiques (CSV)
+   string GetCSVFileName() const { return m_csvFileName; }
+   bool IsUsingCSV() const { return m_useCSV; }
+   void ForceCSVMode(bool useCSV) { m_useCSV = useCSV; m_csvLoaded = false; }
+   void SetCSVFile(string fileName) { m_csvFileName = fileName; m_csvLoaded = false; }
+
+   // Méthodes de debug
+   void EnableDebugMode(bool enable = true) { m_debugMode = enable; }
+   
+   string GetDebugInfo() const
+   {
+      string info = "";
+      info += "=== NewsFilter Debug Info ===\n";
+      info += "Enabled: " + (m_useFilter ? "YES" : "NO") + "\n";
+      info += "CSV Mode: " + (m_useCSV ? "YES" : "NO") + "\n";
+      info += "CSV Loaded: " + (m_csvLoaded ? "YES" : "NO") + "\n";
+      info += "Currencies: " + m_currencies + "\n";
+      info += "Keywords: " + m_keywords + "\n";
+      info += "Events Today: " + IntegerToString(m_eventsLoadedToday) + "\n";
+      info += "Trading Disabled: " + (m_tradingDisabledNews ? "YES" : "NO") + "\n";
+      info += "Last News: " + m_lastNewsMessage + "\n";
+      
+      info += "\n--- Loaded Events (max 10) ---\n";
+      int maxShow = (ArraySize(m_newsEvents) < 10 ? ArraySize(m_newsEvents) : 10);
+      for(int i = 0; i < maxShow; i++)
+      {
+         info += IntegerToString(i+1) + ". " + 
+                 m_newsEvents[i].currency + " " + 
+                 m_newsEvents[i].eventName + " at " +
+                 TimeToString(m_newsEvents[i].time) + "\n";
+      }
+      
+      return info;
+   }
+
 private:
    //+------------------------------------------------------------------+
    //| Vérifier les actualités à venir                                |
    //+------------------------------------------------------------------+
    bool CheckUpcomingNewsEvents()
    {
+      if(m_useCSV)
+         return CheckUpcomingNewsFromCSV();
+      return CheckUpcomingNewsFromAPI();
+   }
+
+   // Chargement des événements depuis un CSV
+   int LoadNewsFromCSV(datetime targetDate = 0)
+   {
+      // Déterminer le jour cible (minuit)
+      datetime baseTime = (targetDate == 0 ? TimeGMT() : targetDate);
+      MqlDateTime dt; TimeToStruct(baseTime, dt); dt.hour = 0; dt.min = 0; dt.sec = 0;
+      datetime dayStart = StructToTime(dt);
+      datetime dayEnd = dayStart + 86400;
+
+      ArrayResize(m_newsEvents, 0);
+
+      // Essayer Common/Files en priorité
+      int fileHandle = FileOpen(m_csvFileName, FILE_READ|FILE_CSV|FILE_ANSI|FILE_COMMON, ',');
+      if(fileHandle == INVALID_HANDLE)
+      {
+         // Fallback: MQL5/Files du terminal
+         fileHandle = FileOpen(m_csvFileName, FILE_READ|FILE_CSV|FILE_ANSI, ',');
+      }
+
+      if(fileHandle == INVALID_HANDLE)
+      {
+         Print(m_logPrefix + "❌ ERROR: Could not open CSV file: " + m_csvFileName);
+         Print(m_logPrefix + "Expected paths: " +
+              TerminalInfoString(TERMINAL_COMMONDATA_PATH) + "\\Files\\" + m_csvFileName + " OR " +
+              TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\Files\\" + m_csvFileName);
+         m_csvLoaded = false;
+         m_eventsLoadedToday = 0;
+         return 0;
+      }
+
+      // Lire et ignorer l'en-tête
+      if(FileIsEnding(fileHandle))
+      {
+         FileClose(fileHandle);
+         return false;
+      }
+      // Consommer l'en-tête (4 colonnes)
+      FileReadString(fileHandle); FileReadString(fileHandle); FileReadString(fileHandle); FileReadString(fileHandle);
+
+      int count = 0;
+      while(!FileIsEnding(fileHandle))
+      {
+         string dateTimeStr = FileReadString(fileHandle);
+         string currency = FileReadString(fileHandle);
+         string eventName = FileReadString(fileHandle);
+         string impact = FileReadString(fileHandle);
+
+         if(dateTimeStr == "")
+            break;
+
+         datetime eventTime = StringToTime(dateTimeStr);
+         if(eventTime == 0)
+         {
+            Print(m_logPrefix + "⚠️ Invalid datetime: " + dateTimeStr);
+            continue;
+         }
+
+         // Filtrer : uniquement les événements du jour [dayStart, dayEnd)
+         if(eventTime < dayStart || eventTime >= dayEnd)
+            continue;
+
+         // Filtrer par devise si configurée
+         if(m_currencies != "" && StringFind(m_currencies, currency) < 0)
+            continue;
+
+         int size = ArraySize(m_newsEvents);
+         ArrayResize(m_newsEvents, size + 1);
+         m_newsEvents[size].time = eventTime;
+         m_newsEvents[size].currency = currency;
+         m_newsEvents[size].eventName = eventName;
+         m_newsEvents[size].impact = impact;
+         count++;
+         
+         // DEBUG: Logger les événements chargés
+         if(m_debugMode && count <= 5)  // Afficher les 5 premiers seulement
+         {
+            Print(m_logPrefix + "📥 Loaded event #" + IntegerToString(count) + ": " + 
+                  currency + " " + eventName + " at " + TimeToString(eventTime));
+         }
+      }
+
+      FileClose(fileHandle);
+      m_csvLoaded = true;
+      m_lastLoadedDate = dayStart;
+      m_eventsLoadedToday = count;
+      return count;
+   }
+
+   // Vérification via CSV
+   bool CheckUpcomingNewsFromCSV()
+   {
+      // Rafraîchir si changement de jour ou pas encore chargé
+      RefreshDailyNews(TimeGMT());
+      if(!m_csvLoaded)
+         return false;
+
+      string sep = (m_separator == NEWS_COMMA) ? "," : ";";
+      ushort sep_code = StringGetCharacter(sep, 0);
+      int k = StringSplit(m_keywords, sep_code, m_newsToAvoid);
+      bool hasKeywords = (k > 0);
+      
+      // DEBUG: Logger les keywords parsés
+      if(m_debugMode)
+      {
+         if(hasKeywords)
+         {
+            string kwList = "";
+            for(int x = 0; x < k; x++)
+               kwList += "[" + m_newsToAvoid[x] + "] ";
+            Print(m_logPrefix + "🔍 DEBUG: Parsed " + IntegerToString(k) + " keywords: " + kwList);
+         }
+         else
+         {
+            Print(m_logPrefix + "🔍 DEBUG: No keywords - will block ALL events for currencies: " + m_currencies);
+         }
+      }
+
+      datetime currentTime = TimeGMT();
+      int secondsBefore = m_stopBeforeMin * 60;
+
+      for(int i = 0; i < ArraySize(m_newsEvents); i++)
+      {
+         if(StringFind(m_currencies, m_newsEvents[i].currency) < 0)
+            continue;
+
+         int timeDiff = (int)(m_newsEvents[i].time - currentTime);
+         if(timeDiff < 0)
+            continue;
+
+         // Si pas de keywords, bloquer tous les événements des devises surveillées
+         if(!hasKeywords)
+         {
+            // DEBUG: Logger les événements matchés
+            if(m_debugMode)
+            {
+               Print(m_logPrefix + "🔍 DEBUG Event (no keywords): " + m_newsEvents[i].eventName + 
+                     " | Time: " + TimeToString(m_newsEvents[i].time) + 
+                     " | TimeDiff: " + IntegerToString(timeDiff/60) + " min" +
+                     " | Threshold: " + IntegerToString(secondsBefore/60) + " min");
+            }
+            
+            if(timeDiff < secondsBefore)
+            {
+               m_lastNewsAvoided = m_newsEvents[i].time;
+               m_tradingDisabledNews = true;
+               m_lastNewsMessage = m_newsEvents[i].currency + " " +
+                                  m_newsEvents[i].eventName + " at " +
+                                  TimeToString(m_newsEvents[i].time, TIME_MINUTES);
+
+               if(TimeGMT() - m_lastLogTime >= 60)
+               {
+                  LogIfChanged(false, "Trading disabled due to news (all events): " + m_lastNewsMessage);
+                  m_lastLogTime = TimeGMT();
+               }
+               return true;
+            }
+         }
+         else
+         {
+            // Comportement normal : vérifier les keywords
+            for(int j = 0; j < k; j++)
+            {
+               // Matching case-insensitive
+               string eventNameUpper = m_newsEvents[i].eventName;
+               StringToUpper(eventNameUpper);
+               string keywordUpper = m_newsToAvoid[j];
+               StringToUpper(keywordUpper);
+               
+               if(StringFind(eventNameUpper, keywordUpper) >= 0)
+               {
+                  // DEBUG: Logger les événements matchés
+                  if(m_debugMode)
+                  {
+                     Print(m_logPrefix + "🔍 DEBUG Event: " + m_newsEvents[i].eventName + 
+                           " | Time: " + TimeToString(m_newsEvents[i].time) + 
+                           " | TimeDiff: " + IntegerToString(timeDiff/60) + " min" +
+                           " | Threshold: " + IntegerToString(secondsBefore/60) + " min");
+                  }
+                  
+                  if(timeDiff < secondsBefore)
+                  {
+                     m_lastNewsAvoided = m_newsEvents[i].time;
+                     m_tradingDisabledNews = true;
+                     m_lastNewsMessage = m_newsEvents[i].currency + " " +
+                                        m_newsEvents[i].eventName + " at " +
+                                        TimeToString(m_newsEvents[i].time, TIME_MINUTES);
+
+                     if(TimeGMT() - m_lastLogTime >= 60)
+                     {
+                        LogIfChanged(false, "Trading disabled due to news: " + m_lastNewsMessage);
+                        m_lastLogTime = TimeGMT();
+                     }
+                     return true;
+                  }
+               }
+            }
+         }
+      }
+      return false;
+   }
+
+   // Rechargement quotidien des événements CSV
+   bool RefreshDailyNews(datetime currentTime)
+   {
+      // Calculer minuit du jour courant
+      MqlDateTime dt; TimeToStruct(currentTime, dt); dt.hour = 0; dt.min = 0; dt.sec = 0;
+      datetime todayStart = StructToTime(dt);
+
+      if(m_csvLoaded && m_lastLoadedDate == todayStart)
+         return true; // Déjà chargé pour aujourd'hui
+
+      int loaded = LoadNewsFromCSV(todayStart);
+      string dateStr = TimeToString(todayStart, TIME_DATE);
+      Print(m_logPrefix + "✅ Loaded " + IntegerToString(loaded) + " events for " + dateStr + 
+            " (currencies: " + (m_currencies == "" ? "ALL" : m_currencies) + ")");
+      return (loaded > 0);
+   }
+
+   // Vérification via API (ancienne implémentation)
+   bool CheckUpcomingNewsFromAPI()
+   {
       // Parser les keywords
       string sep = (m_separator == NEWS_COMMA) ? "," : ";";
       ushort sep_code = StringGetCharacter(sep, 0);
       
       int k = StringSplit(m_keywords, sep_code, m_newsToAvoid);
-      if(k <= 0) return false;
+      bool hasKeywords = (k > 0);
+      
+      // DEBUG: Logger les keywords parsés
+      if(m_debugMode)
+      {
+         if(hasKeywords)
+         {
+            string kwList = "";
+            for(int x = 0; x < k; x++)
+               kwList += "[" + m_newsToAvoid[x] + "] ";
+            Print(m_logPrefix + "🔍 DEBUG: Parsed " + IntegerToString(k) + " keywords: " + kwList);
+         }
+         else
+         {
+            Print(m_logPrefix + "🔍 DEBUG: No keywords - will block ALL events for currencies: " + m_currencies);
+         }
+      }
       
       // Récupérer le calendrier économique
       MqlCalendarValue values[];
@@ -367,30 +744,64 @@ private:
          if(StringFind(m_currencies, country.currency) < 0) 
             continue;
          
-         // Vérifier si c'est une actualité clé
-         for(int j = 0; j < k; j++)
+         datetime newsTime = values[i].time;
+         int secondsBefore = m_stopBeforeMin * 60;
+         int timeDiff = (int)(newsTime - TimeGMT());
+         
+         if(timeDiff < 0)
+            continue;
+         
+         // Si pas de keywords, bloquer tous les événements des devises surveillées
+         if(!hasKeywords)
          {
-            if(StringFind(event.name, m_newsToAvoid[j]) >= 0)
+            if(timeDiff < secondsBefore)
             {
-               datetime newsTime = values[i].time;
-               int secondsBefore = m_stopBeforeMin * 60;
+               m_lastNewsAvoided = newsTime;
+               m_tradingDisabledNews = true;
+               m_lastNewsMessage = country.currency + " " + 
+                                  event.name + " at " +
+                                  TimeToString(newsTime, TIME_MINUTES);
                
-               if(newsTime - TimeGMT() < secondsBefore)
+               // Logging anti-spam
+               if(TimeGMT() - m_lastLogTime >= 60)
                {
-                  m_lastNewsAvoided = newsTime;
-                  m_tradingDisabledNews = true;
-                  m_lastNewsMessage = country.currency + " " + 
-                                     event.name + " at " +
-                                     TimeToString(newsTime, TIME_MINUTES);
-                  
-                  // Logging anti-spam
-                  if(TimeGMT() - m_lastLogTime >= 60)
+                  LogIfChanged(false, "Trading disabled due to news (all events): " + m_lastNewsMessage);
+                  m_lastLogTime = TimeGMT();
+               }
+               
+               return true;
+            }
+         }
+         else
+         {
+            // Comportement normal : vérifier les keywords
+            for(int j = 0; j < k; j++)
+            {
+               // Matching case-insensitive
+               string eventNameUpper = event.name;
+               StringToUpper(eventNameUpper);
+               string keywordUpper = m_newsToAvoid[j];
+               StringToUpper(keywordUpper);
+               
+               if(StringFind(eventNameUpper, keywordUpper) >= 0)
+               {
+                  if(timeDiff < secondsBefore)
                   {
-                     Print(m_logPrefix + "📰 Trading désactivé: ", m_lastNewsMessage);
-                     m_lastLogTime = TimeGMT();
+                     m_lastNewsAvoided = newsTime;
+                     m_tradingDisabledNews = true;
+                     m_lastNewsMessage = country.currency + " " + 
+                                        event.name + " at " +
+                                        TimeToString(newsTime, TIME_MINUTES);
+                     
+                     // Logging anti-spam
+                     if(TimeGMT() - m_lastLogTime >= 60)
+                     {
+                        LogIfChanged(false, "Trading disabled due to news: " + m_lastNewsMessage);
+                        m_lastLogTime = TimeGMT();
+                     }
+                     
+                     return true;
                   }
-                  
-                  return true;
                }
             }
          }

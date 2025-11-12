@@ -10,6 +10,7 @@
 // User Input Parameters
 input string   InpSymbolToTrade = "";  // Symbol to trade (empty = use chart symbol)
 input double   InpRiskPercent = -1.0;  // Risk per trade (%) (-1 = use group default)
+input double   InpPriceTolerancePercent = -1.0; // Price Tolerance Percent (-1 = use group default, 0.01 = 0.01%)
 input bool     InpUseFvgFilter = false;  // Enable FVG Filter
 
 // Include required files
@@ -22,20 +23,21 @@ CConfigManager* configManager = NULL;
 ForexScalperBot* bot = NULL;
 string currentSymbol = "";
 
+// Helper: cleanup resources and fail initialization
+int CleanupAndFail(string errorMsg)
+{
+   Logger::Error("❌ " + errorMsg);
+   if(bot != NULL) { delete bot; bot = NULL; }
+   if(configManager != NULL) { delete configManager; configManager = NULL; }
+   return(INIT_FAILED);
+}
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // 🔧 AJOUTER AU DÉBUT : Empêcher réinit si juste changement de timeframe
-   static bool alreadyInitialized = false;
-   static string lastSymbol = "";
    
-   if(alreadyInitialized && lastSymbol == Symbol())
-   {
-      Logger::Info("⚠️ Chart timeframe changed - EA configuration unchanged");
-      return(INIT_SUCCEEDED);  // Ne pas réinitialiser
-   }
    
    // Initialize Logger first
    Logger::Initialize(LOG_INFO, "[BreakoutScalper] ");
@@ -63,10 +65,7 @@ int OnInit()
    
    if(!configManager.Initialize())
    {
-      Logger::Error("❌ ERROR: Configuration manager initialization failed");
-      delete configManager;
-      configManager = NULL;
-      return(INIT_FAILED);
+      return(CleanupAndFail("ERROR: Configuration manager initialization failed"));
    }
    
    // Get configuration for the target symbol
@@ -93,6 +92,11 @@ int OnInit()
       config.riskPercent = InpRiskPercent;
       Logger::Warning("⚠️ Risk percent overridden to: " + DoubleToString(InpRiskPercent, 1) + "%");
    }
+   if(InpPriceTolerancePercent >= 0.0)
+   {
+      config.priceTolerancePercent = InpPriceTolerancePercent;
+      Logger::Warning("⚠️ Price tolerance overridden to: " + DoubleToString(InpPriceTolerancePercent, 3) + "%");
+   }
    
    // Override FVG filter if specified in input
    config.useFvgFilter = InpUseFvgFilter;
@@ -104,30 +108,19 @@ int OnInit()
    // Validate symbol is available before creating bot
    if(!ValidateSymbolAvailable(currentSymbol))
    {
-      Logger::Error("❌ ERROR: Symbol " + currentSymbol + " is not available for trading");
-      delete configManager;
-      configManager = NULL;
-      return(INIT_FAILED);
+      return(CleanupAndFail("ERROR: Symbol " + currentSymbol + " is not available for trading"));
    }
    
    // Initialize bot with configuration
    bot = new ForexScalperBot(config);
    if(bot == NULL)
    {
-      Logger::Error("❌ ERROR: Failed to create bot instance");
-      delete configManager;
-      configManager = NULL;
-      return(INIT_FAILED);
+      return(CleanupAndFail("ERROR: Failed to create bot instance"));
    }
    
    if(!bot.Initialize())
    {
-      Logger::Error("❌ ERROR: Bot initialization failed");
-      delete bot;
-      bot = NULL;
-      delete configManager;
-      configManager = NULL;
-      return(INIT_FAILED);
+      return(CleanupAndFail("ERROR: Bot initialization failed"));
    }
    
    // Display configuration info
@@ -138,10 +131,6 @@ int OnInit()
    Logger::Info("Strategy: " + config.strategyName);
    Logger::Info("Magic: " + IntegerToString(config.baseMagic));
    Logger::Info("Risk: " + DoubleToString(config.riskPercent, 1) + "%");
-   
-   // 🔧 AJOUTER À LA FIN avant le return :
-   alreadyInitialized = true;
-   lastSymbol = currentSymbol;
    
    return(INIT_SUCCEEDED);
 }
@@ -252,6 +241,7 @@ void DisplayConfigurationInfo(BotConfig &config)
       "Risk: %.1f%%\n" +
       "TP/SL: %d/%d points\n" +
       "Strategy: %s\n" +
+      "Order Distance: %d pts | Price Tolerance: %.3f%%\n" +
       "Bars Analysis: %d\n" +
       "Trading Hours: %02d:00-%02d:00\n" +
       "Trailing TP: %s\n" +
@@ -265,6 +255,8 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.riskPercent,
       config.tpPoints, config.slPoints,
       strategyTypeStr,
+      config.orderDistPoints,
+      config.priceTolerancePercent,
       config.barsN,
       config.startHour, config.endHour,
       trailingTPStr,
@@ -279,17 +271,3 @@ void DisplayConfigurationInfo(BotConfig &config)
    Logger::Info("==========================");
 }
 
-//+------------------------------------------------------------------+
-//| Chart event handler                                              |
-//+------------------------------------------------------------------+
-void OnChartEvent(const int id,
-                  const long &lparam,
-                  const double &dparam,
-                  const string &sparam)
-{
-   if(bot != NULL)
-   {
-      // Forward chart events to bot if needed
-      // (Bot may implement OnChartEvent if required)
-   }
-}

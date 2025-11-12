@@ -49,6 +49,7 @@ private:
    int               m_orderDistPoints;     // Distance des ordres
    int               m_slippagePoints;      // NEW: Slippage tolerance
    int               m_entryOffsetPoints;   // NEW: Entry offset for Stop orders
+   double            m_priceTolerancePercent; // NEW: Price tolerance percentage
    string            m_tradeComment;        // Commentaire des trades
    
    // Objets de trading
@@ -92,6 +93,13 @@ private:
    bool              m_useFvgFilter;
    FVGTradeFilter    m_fvgFilter;           // Filtre FVG pour validation des trades
    
+   // 🔍 Cache pour éviter vérifications répétées FVG
+   struct OrderFVGCheck {
+      ulong ticket;
+      datetime lastCheckTime;
+   };
+   OrderFVGCheck m_checkedOrders[];
+   
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
@@ -116,6 +124,7 @@ public:
                      bool useDynamicTSLTrigger = true,      // 🆕 AJOUTER
                      double tslCostMultiplier = 1.5,        // 🆕 AJOUTER
                      int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
+                     double priceTolerancePercent = 0.01,
                      bool useFvgFilter = false)             // 🆕 FVG FILTER
    {
       m_symbol = symbol;
@@ -132,6 +141,7 @@ public:
       m_orderDistPoints = orderDistPoints;
       m_slippagePoints = slippagePoints;
       m_entryOffsetPoints = entryOffsetPoints;
+      m_priceTolerancePercent = (priceTolerancePercent > 0.0 ? priceTolerancePercent : 0.01);
       m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
       
       // Initialiser les variables
@@ -146,9 +156,13 @@ public:
       m_tslMinTriggerPoints = tslMinTriggerPoints;
       ArrayResize(m_positionCosts, 0);
       
+      // 🔍 Initialiser et tracker le cache des ordres FVG
+      ArrayResize(m_checkedOrders, 0);
+      
       // 🆕 FVG Filter
       m_useFvgFilter = useFvgFilter;
       m_fvgFilter.Init(m_symbol, m_timeframe, m_useFvgFilter);
+      
       
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
@@ -189,9 +203,12 @@ public:
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~ForexSymbolTrader()
-   {
-      // Cleanup Trailing TP
+    ~ForexSymbolTrader()
+    {
+       // 🔍 Libérer les trackings mémoire FVG
+       
+       
+       // Cleanup Trailing TP
       for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
          if(m_positionTrailings[i].trailing != NULL) {
             delete m_positionTrailings[i].trailing;
@@ -214,14 +231,16 @@ public:
    //+------------------------------------------------------------------+
    void OnTick()
    {
-
-      CheckFvgDisqualifier();
-
-      // Vérifier si c'est une nouvelle barre
+      // 🔥 CRITIQUE: Vérifier nouvelle barre AVANT toute opération FVG
       if(!IsNewBar()) return;
       
-
       m_fvgFilter.OnNewBar();
+      
+      
+      
+      // 🆕 Vérifier FVG UNE SEULE FOIS par barre
+      CheckFvgDisqualifier();
+      
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
       // Mettre à jour les compteurs
@@ -252,7 +271,7 @@ public:
       }
    }
 
-      //+------------------------------------------------------------------+
+   //+------------------------------------------------------------------+
    //| Vérifier et annuler les ordres disqualifiés par le filtre FVG    |
    //+------------------------------------------------------------------+
    bool CheckFvgDisqualifier()
@@ -260,85 +279,154 @@ public:
       if(!m_fvgFilter.GetEnabled())
          return false;
 
+      // 🔥 PROTECTION 1: Skip si aucun ordre pending
+      int totalOrders = OrdersTotal();
+      if(totalOrders == 0)
+         return false;
 
-      // Utiliser OrderManager::FindTicketViolatingPriceTolerance pour trouver un ordre dépassant le priceTolerance
+      // 🔥 PROTECTION 2: Warning si trop d'ordres
+      if(totalOrders > 50)
+      {
+         static datetime lastWarning = 0;
+         if(TimeCurrent() - lastWarning > 3600)
+         {
+            Print("⚠️ [", m_symbol, "] Trop d'ordres pending: ", totalOrders, " - Performance affectée");
+            lastWarning = TimeCurrent();
+         }
+      }
+
+      // 🔥 PROTECTION 3: Limiter le nombre de vérifications FVG par barre
+      static int checksThisBar = 0;
+      static datetime lastBarTime = 0;
+      datetime currentBarTime = iTime(m_symbol, m_timeframe, 0);
+      
+      if(currentBarTime != lastBarTime)
+      {
+         checksThisBar = 0;
+         lastBarTime = currentBarTime;
+      }
+      
+      if(checksThisBar >= 40)
+      {
+         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (40/barre)");
+         return false;
+      }
+      checksThisBar++;
+
+    
+
+      // Trouver un ordre violant la tolérance
       ulong violatingTicket = 0;
       bool isBuy = false;
-      double priceTolerance = SymbolInfoDouble(m_symbol, SYMBOL_BID) * 0.0001; // 0.01% tolerance
+      double referencePrice = 0.0;
+      if(!SymbolInfoDouble(m_symbol, SYMBOL_BID, referencePrice) || referencePrice <= 0.0)
+      {
+         SymbolInfoDouble(m_symbol, SYMBOL_LAST, referencePrice);
+         if(referencePrice <= 0.0)
+            referencePrice = m_point;
+      }
+
+      double tolerancePercent = m_priceTolerancePercent;
+      if(tolerancePercent <= 0.0)
+         tolerancePercent = 0.01;
+
+      double priceTolerance = referencePrice * (tolerancePercent / 100.0);
       double orderPrice = 0.0;
       double orderSL = 0.0;
+      
       if(FindTicketViolatingPriceTolerance(priceTolerance, violatingTicket, isBuy, orderPrice, orderSL))
       {
+         // Vérifier si déjà vérifié récemment
+         if(WasRecentlyChecked(violatingTicket))
+            return false;
          
-            bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
-
-            if(!isAllowed)
-            {
-               if(CancelOrderById(violatingTicket))
-               {
-               }
-               else
-               {
-                  Logger::Error(StringFormat("❌ Erreur suppression ordre #%I64u | Erreur: %d", violatingTicket, GetLastError()));
-               }
-
-               
-            }
-
-
-            if(!isAllowed)
-            {
-               OrderManager::SendLimitOrder(BuildOrderParams(),!isBuy, orderPrice,"FVG");
-            }
+         // Vérifier avec le filtre FVG
+         bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
+         bool hasFVGBetweenEntryAndSL = m_fvgFilter.HasFVGBetweenEntryAndSL(orderPrice, orderSL, isBuy);
+         if(!isAllowed )
+         {
+	            Print("🚫 FVG DISQUALIFIED [", m_symbol, "] ", (isBuy ? "BUY" : "SELL"),
+                  " Stop #", violatingTicket, " | Entry: ", DoubleToString(orderPrice, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)));
             
-         
+            if(CancelOrderById(violatingTicket))
+            {
+               RemoveFromCheckedList(violatingTicket);
+               return true;
+            }
+            else
+            {
+               Print("❌ Erreur annulation ordre #", violatingTicket, " | Erreur: ", GetLastError());
+            }
+
+            
+         }
+         else
+         {
+            // FVG OK - marquer comme vérifié
+            MarkAsChecked(violatingTicket);
+         }
+         if(!isAllowed || hasFVGBetweenEntryAndSL)
+         {
+            OrderManager::SendLimitOrder(BuildOrderParams(), !isBuy, orderPrice,"FVG");
+         }
       }
-			return false;
+      
+      return false;
    }
 
    
-     //+------------------------------------------------------------------+
-  //| Retourner un ticket violant priceTolerance (+ sens isBuy)        |
-  //+------------------------------------------------------------------+
-  // Modifié pour retourner également le StopLoss de l'ordre (slOrder)
-  bool FindTicketViolatingPriceTolerance(const double priceTolerance, ulong &ticket, bool &isBuy, double &orderPrice, double &slOrder)
-  {
-   ticket = 0;
-   isBuy = false;
-   slOrder = 0.0;
-   orderPrice=0.0;
-   bool shouldCheckFVG = false;
-   double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
-     {
-      ulong t = OrderGetTicket(i);
-      if(!OrderSelect(t)) continue;
-      if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
-      if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
-      orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
-      slOrder = OrderGetDouble(ORDER_SL);
-      long orderType = OrderGetInteger(ORDER_TYPE);
-      double distanceToPrice = MathAbs(currentPrice - orderPrice);
-
-      if(distanceToPrice >= priceTolerance)
-        {
-         ticket = t;
-               if(orderType == ORDER_TYPE_BUY_STOP)
-              {
-               isBuy = true;
-               shouldCheckFVG = true;
-              }
-             else if(orderType == ORDER_TYPE_SELL_STOP)
-              {
-               isBuy = false;
-               shouldCheckFVG = true;
-              }
-              if(shouldCheckFVG)
-               return true;
-        }
-     }
-   return shouldCheckFVG;
-  }
+   //+------------------------------------------------------------------+
+   //| Retourner un ticket violant priceTolerance (+ sens isBuy)        |
+   //+------------------------------------------------------------------+
+   bool FindTicketViolatingPriceTolerance(const double priceTolerance, 
+                                          ulong &ticket, 
+                                          bool &isBuy, 
+                                          double &orderPrice, 
+                                          double &slOrder)
+   {
+      ticket = 0;
+      isBuy = false;
+      slOrder = 0.0;
+      orderPrice = 0.0;
+      
+      double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+      int totalOrders = OrdersTotal();
+      
+      // 🔥 OPTIMISATION: Limiter le scan à 20 ordres max
+      int maxScan = MathMin(totalOrders, 20);
+      
+      for(int i = totalOrders - 1; i >= totalOrders - maxScan; i--)
+      {
+         if(i < 0) break;
+         
+         ulong t = OrderGetTicket(i);
+         if(!OrderSelect(t)) continue;
+         
+         if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
+         if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
+         
+         long orderType = OrderGetInteger(ORDER_TYPE);
+         
+         // Vérifier UNIQUEMENT les Stop orders
+         if(orderType != ORDER_TYPE_BUY_STOP && orderType != ORDER_TYPE_SELL_STOP)
+            continue;
+         
+         orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+         slOrder = OrderGetDouble(ORDER_SL);
+         
+         double distanceToPrice = MathAbs(currentPrice - orderPrice);
+         
+         // 🔥 FIX CRITIQUE: <= au lieu de >= (vérifier si prix s'approche)
+         if(distanceToPrice <= priceTolerance)
+         {
+            ticket = t;
+            isBuy = (orderType == ORDER_TYPE_BUY_STOP);
+            return true;
+         }
+      }
+      
+      return false;
+   }
 
    //+------------------------------------------------------------------+
    //| 🆕 Trailing Stop Loss DYNAMIQUE basé sur les coûts réels        |
@@ -631,7 +719,7 @@ public:
          }
       }
       
-      double totalCostPoints = commissionPoints + spreadPoints + swapPoints;
+      double totalCostPoints = 0;//commissionPoints + spreadPoints + swapPoints;
       
       // Calculer le breakeven SL
       double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -1056,5 +1144,105 @@ private:
    {
       m_counterMgr.Recalculate();
    }
+   
+   //+------------------------------------------------------------------+
+   //| Vérifier si un ordre a été récemment vérifié                     |
+   //+------------------------------------------------------------------+
+   bool WasRecentlyChecked(ulong ticket)
+   {
+      datetime currentTime = TimeCurrent();
+      
+      for(int i = 0; i < ArraySize(m_checkedOrders); i++)
+      {
+         if(m_checkedOrders[i].ticket == ticket)
+         {
+            // Récent = moins de 60 secondes
+            if(currentTime - m_checkedOrders[i].lastCheckTime < 60)
+               return true;
+            
+            m_checkedOrders[i].lastCheckTime = currentTime;
+            return false;
+         }
+      }
+      return false;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Marquer un ordre comme vérifié                                   |
+   //+------------------------------------------------------------------+
+   void MarkAsChecked(ulong ticket)
+   {
+      // Chercher si déjà dans la liste
+      for(int i = 0; i < ArraySize(m_checkedOrders); i++)
+      {
+         if(m_checkedOrders[i].ticket == ticket)
+         {
+            m_checkedOrders[i].lastCheckTime = TimeCurrent();
+            return;
+         }
+      }
+      
+      // 🔥 PROTECTION: Limite stricte de 50 entrées
+      const int MAX_CACHE_SIZE = 50;
+      int currentSize = ArraySize(m_checkedOrders);
+      
+      if(currentSize >= MAX_CACHE_SIZE)
+      {
+         Print("⚠️ [", m_symbol, "] Cache FVG plein (", MAX_CACHE_SIZE, ") - suppression plus vieille");
+         
+         // Supprimer la plus vieille entrée
+         datetime oldestTime = m_checkedOrders[0].lastCheckTime;
+         int oldestIndex = 0;
+         
+         for(int i = 1; i < currentSize; i++)
+         {
+            if(m_checkedOrders[i].lastCheckTime < oldestTime)
+            {
+               oldestTime = m_checkedOrders[i].lastCheckTime;
+               oldestIndex = i;
+            }
+         }
+         
+         // Décaler pour supprimer la plus vieille
+         for(int j = oldestIndex; j < currentSize - 1; j++)
+         {
+            m_checkedOrders[j] = m_checkedOrders[j + 1];
+         }
+         ArrayResize(m_checkedOrders, currentSize - 1);
+      }
+      
+      // Ajouter la nouvelle entrée
+      int size = ArraySize(m_checkedOrders);
+      ArrayResize(m_checkedOrders, size + 1);
+      m_checkedOrders[size].ticket = ticket;
+      m_checkedOrders[size].lastCheckTime = TimeCurrent();
+      
+    
+   }
+
+   //+------------------------------------------------------------------+
+   //| Retirer un ordre de la liste des vérifications                   |
+   //+------------------------------------------------------------------+
+   void RemoveFromCheckedList(ulong ticket)
+   {
+      for(int i = 0; i < ArraySize(m_checkedOrders); i++)
+      {
+         if(m_checkedOrders[i].ticket == ticket)
+         {
+            // Décaler tous les éléments suivants
+            for(int j = i; j < ArraySize(m_checkedOrders) - 1; j++)
+            {
+               m_checkedOrders[j] = m_checkedOrders[j + 1];
+            }
+            ArrayResize(m_checkedOrders, ArraySize(m_checkedOrders) - 1);
+            
+           
+            
+            return;
+         }
+      }
+   }
+   
+  
    
 };

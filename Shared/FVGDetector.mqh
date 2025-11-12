@@ -153,11 +153,33 @@ private:
    //+------------------------------------------------------------------+
    void AddFVGToList(const FVGInfo &fvg)
    {
+      const int MAX_FVGS = 500;
+      
+      if(ArraySize(m_fvgList) >= MAX_FVGS)
+      {
+         LOG_WARNING("MAX_FVGS reached (" + IntegerToString(MAX_FVGS) + ") - Purging");
+         PurgeInvalidFVGs();
+         
+         if(ArraySize(m_fvgList) >= MAX_FVGS)
+         {
+            int toRemove = MAX_FVGS / 5;
+            for(int i = 0; i < toRemove; i++)
+            {
+               for(int j = 0; j < ArraySize(m_fvgList) - 1; j++)
+               {
+                  m_fvgList[j] = m_fvgList[j + 1];
+               }
+               ArrayResize(m_fvgList, ArraySize(m_fvgList) - 1);
+            }
+            LOG_WARNING("Force removed " + IntegerToString(toRemove) + " oldest FVGs");
+         }
+      }
+      
       int n = ArraySize(m_fvgList);
       ArrayResize(m_fvgList, n + 1);
       m_fvgList[n] = fvg;
       m_memoryAllocs++;
-      HashInsert(HashFVG(fvg));
+      // HashInsert(HashFVG(fvg));  // 🔥 DÉSACTIVÉ temporairement
       m_validCacheBuilt = false; // invalider le cache des listes valides
    }
 
@@ -181,6 +203,57 @@ private:
          else { m_cachedBearish[is++] = m_fvgList[i]; }
       }
       m_validCacheBuilt = true;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Purger les FVGs invalides pour libérer mémoire               |
+   //+------------------------------------------------------------------+
+   void PurgeInvalidFVGs()
+   {
+      int total = ArraySize(m_fvgList);
+      if(total == 0) return;
+      
+      int validCount = 0;
+      for(int i = 0; i < total; i++)
+      {
+         if(m_fvgList[i].IsValid)
+            validCount++;
+      }
+      
+      // Si > 80% sont invalides, nettoyer
+      if(validCount < total * 0.2 || total > 500)
+      {
+         FVGInfo kept[];
+         ArrayResize(kept, validCount);
+         
+         int k = 0;
+         for(int i = 0; i < total; i++)
+         {
+            if(m_fvgList[i].IsValid)
+               kept[k++] = m_fvgList[i];
+         }
+         
+         ArrayResize(m_fvgList, 0);
+         ArrayResize(m_fvgList, validCount);
+         ArrayCopy(m_fvgList, kept);
+         
+         /*
+         // Reconstruire hash - DÉSACTIVÉ
+         ArrayResize(m_fvgHashKeys, 0);
+         ArrayResize(m_fvgHashState, 0);
+         m_fvgHashSize = 0;
+         m_fvgHashCap = 0;
+         
+         for(int i = 0; i < validCount; i++)
+         {
+            HashInsert(HashFVG(m_fvgList[i]));
+         }
+         */
+         
+         m_validCacheBuilt = false;
+         
+         LOG_INFO("Purged " + IntegerToString(total - validCount) + " invalid FVGs | Remaining: " + IntegerToString(validCount));
+      }
    }
    
    // Hash d'un FVG (FNV-1a 32-bit, renvoyé en ulong)
@@ -271,8 +344,20 @@ private:
    //+------------------------------------------------------------------+
    bool ExistsFVG(const FVGInfo &x)
    {
-      ulong h = HashFVG(x);
-      return HashContains(h);
+      // 🔥 DÉSACTIVER HashSet temporairement (boucle infinie)
+      // Recherche linéaire simple
+      for(int i = 0; i < ArraySize(m_fvgList); i++)
+      {
+         if(m_fvgList[i].startTime == x.startTime &&
+            m_fvgList[i].endTime == x.endTime &&
+            MathAbs(m_fvgList[i].top - x.top) < m_point &&
+            MathAbs(m_fvgList[i].bottom - x.bottom) < m_point &&
+            m_fvgList[i].isBullish == x.isBullish)
+         {
+            return true;
+         }
+      }
+      return false;
    }
    
    //+------------------------------------------------------------------+
@@ -383,7 +468,6 @@ private:
       double top = fvg.top;
       double bottomVal = fvg.bottom;
       
-      // Normalisation bornes si inversées
       if(top < bottomVal)
       {
          double tmp = top;
@@ -391,25 +475,32 @@ private:
          bottomVal = tmp;
       }
       
-      // Hauteur strictement positive
       const double height = top - bottomVal;
       if(height <= 0.0)
          return false;
       
-      // Seuil d'invalidation
       const double threshold = height * m_config.invalidatePct / 100.0;
       
-      // Index MT5 de la bougie correspondant à endTime
       int endIdx = iBarShift(m_symbol, tf, fvg.endTime, true);
       if(endIdx == WRONG_VALUE || endIdx <= 0)
          return false;
       
-      // Balayage des bougies strictement postérieures à endTime
-      for(int k = 0; k < endIdx; ++k)
+      // 🔥 OPTIMISATION: Limiter scan à 100 barres
+      int maxScan = MathMin(endIdx, 100);
+      
+      // 🔥 OPTIMISATION: CopyRates au lieu de i*() en boucle
+      MqlRates rates[];
+      int copied = CopyRates(m_symbol, tf, 0, maxScan, rates);
+      if(copied < maxScan)
+         return false;
+      
+      ArraySetAsSeries(rates, true);
+      
+      for(int k = 0; k < maxScan; ++k)
       {
-         double barLow = iLow(m_symbol, tf, k);
-         double barHigh = iHigh(m_symbol, tf, k);
-         double barClose = iClose(m_symbol, tf, k);
+         double barLow = rates[k].low;
+         double barHigh = rates[k].high;
+         double barClose = rates[k].close;
          
          bool invalidate = false;
          
@@ -420,7 +511,7 @@ private:
             else
                invalidate = (barHigh >= (bottomVal + threshold));
          }
-         else // CLOSE_BODY
+         else
          {
             if(fvg.isBullish)
                invalidate = (barClose <= (top - threshold));
@@ -471,6 +562,11 @@ public:
       m_cacheHits = 0;
       m_cacheMisses = 0;
       m_memoryAllocs = 0;
+      
+      // 🆕 Initialiser les caches de FVG valides
+      ArrayResize(m_cachedBullish, 0);
+      ArrayResize(m_cachedBearish, 0);
+      m_validCacheBuilt = false;
    }
    
    //+------------------------------------------------------------------+
@@ -557,9 +653,33 @@ public:
             IndicatorRelease(m_atrHandles[i]);
       }
       
+      // Libérer tous les tableaux
       ArrayFree(m_fvgList);
       ArrayFree(m_atrHandles);
       ArrayFree(m_timeframes);
+      
+      // 🆕 Libérer les caches de timeframe
+      ArrayFree(m_lastBarTime);
+      ArrayFree(m_lastBarsCount);
+      
+      // 🆕 Libérer le HashSet
+      ArrayFree(m_fvgHashKeys);
+      ArrayFree(m_fvgHashState);
+      m_fvgHashSize = 0;
+      m_fvgHashCap = 0;
+      
+      // 🆕 Libérer les caches de FVG valides
+      ArrayFree(m_cachedBullish);
+      ArrayFree(m_cachedBearish);
+      m_validCacheBuilt = false;
+      
+      // Réinitialiser les compteurs de performance
+      m_processTimeMs = 0;
+      m_invalidateTimeMs = 0;
+      m_cacheHits = 0;
+      m_cacheMisses = 0;
+      m_memoryAllocs = 0;
+      
       m_initialized = false;
    }
    
@@ -666,6 +786,17 @@ public:
          LOG_DEBUG("Invalidated " + IntegerToString(invalidated) + " FVG(s)");
       m_invalidateTimeMs += (GetMicrosecondCount() - t0) / 1000;
       if(invalidated>0) RebuildValidCaches();
+      
+      // 🆕 AJOUTER purge périodique
+      static int barsSincePurge = 0;
+      barsSincePurge++;
+      
+      if(barsSincePurge >= 100)
+      {
+         PurgeInvalidFVGs();
+         barsSincePurge = 0;
+      }
+      
       return invalidated;
    }
    
@@ -780,12 +911,8 @@ public:
             ArrayResize(result, k + 1);
             result[k] = m_fvgList[i];
          }
-  
-  // Undefine local logging macros to avoid leaking into includers
-  #undef LOG_ERROR
-  #undef LOG_WARNING
-     }
-  }
+      }
+   }
    
    //+------------------------------------------------------------------+
    //| Réinitialise complètement la liste                               |
@@ -793,6 +920,18 @@ public:
    void Clear()
    {
       ArrayResize(m_fvgList, 0);
+      
+      // 🆕 Réinitialiser le HashSet
+      ArrayResize(m_fvgHashKeys, 0);
+      ArrayResize(m_fvgHashState, 0);
+      m_fvgHashSize = 0;
+      m_fvgHashCap = 0;
+      
+      // 🆕 Réinitialiser les caches
+      ArrayResize(m_cachedBullish, 0);
+      ArrayResize(m_cachedBearish, 0);
+      m_validCacheBuilt = false;
+      
       if(m_config.debugMode)
          LOG_DEBUG("FVG list cleared");
    }

@@ -17,11 +17,14 @@
 // Include ChartManager pour utiliser ses méthodes
 #include "ChartManager.mqh"
 
-// Include des filtres modulaires - ORDRE IMPORTANT pour les énumérations
-#include "Filters/SessionFilter.mqh"     // Doit être en premier pour ENUM_TRADING_SESSION
-#include "Filters/NewsFilter.mqh"        // Doit être en deuxième pour ENUM_NEWS_SEPARATOR
+// Interface en premier
+#include "Filters/ITimeFilter.mqh"
+
+// Implémentations ensuite
 #include "Filters/TimeRangeFilter.mqh"
 #include "Filters/DayRangeFilter.mqh"
+#include "Filters/SessionFilter.mqh"
+#include "Filters/NewsFilter.mqh"
 #include "Filters/TimeMinuteFilter.mqh"
 
 //+------------------------------------------------------------------+
@@ -46,25 +49,8 @@ enum ENUM_TRADING_STATUS
 class TradingTimeManager
 {
 private:
-   // Filtres disponibles (NULL si non utilisé)
-   TimeRangeFilter*     m_timeRangeFilter;
-   DayRangeFilter*      m_dayRangeFilter;
-   SessionFilter*       m_sessionFilter;
-   NewsFilter*          m_newsFilter;
-   TimeMinuteFilter*    m_timeMinuteFilter;
-   
-   // Paramètres des filtres
-   string               m_hourRanges;
-   string               m_dayRanges;
-   ENUM_TRADING_SESSION m_session;
-   int                  m_avoidOpeningMinutes;
-   string               m_newsCurrencies;
-   string               m_newsKeywords;
-   int                  m_newsStopBefore;
-   int                  m_newsStartAfter;
-   int                  m_newsDaysLookup;
-   ENUM_NEWS_SEPARATOR  m_newsSeparator;
-   string               m_timeMinuteRanges;
+   // Polymorphic filters (new architecture)
+   ITimeFilter*         m_filters[];
    
    // Chart Manager pour l'affichage
    ChartManager*        m_chartManager;
@@ -94,25 +80,7 @@ public:
    //+------------------------------------------------------------------+
    TradingTimeManager(ChartManager* chartMgr = NULL)
    {
-      // Initialiser tous les filtres à NULL
-      m_timeRangeFilter = NULL;
-      m_dayRangeFilter = NULL;
-      m_sessionFilter = NULL;
-      m_newsFilter = NULL;
-      m_timeMinuteFilter = NULL;
-      
-      // Initialiser les paramètres des filtres
-      m_hourRanges = "";
-      m_dayRanges = "";
-      m_session = SESSION_ALL;
-      m_avoidOpeningMinutes = 0;
-      m_newsCurrencies = "";
-      m_newsKeywords = "";
-      m_newsStopBefore = 0;
-      m_newsStartAfter = 0;
-      m_newsDaysLookup = 0;
-      m_newsSeparator = NEWS_COMMA;
-      m_timeMinuteRanges = "";
+      ArrayResize(m_filters, 0);
       
       m_chartManager = chartMgr;
       
@@ -137,159 +105,18 @@ public:
    //+------------------------------------------------------------------+
    ~TradingTimeManager()
    {
-      // Nettoyer tous les filtres
-      if(m_timeRangeFilter != NULL) { delete m_timeRangeFilter; m_timeRangeFilter = NULL; }
-      if(m_dayRangeFilter != NULL) { delete m_dayRangeFilter; m_dayRangeFilter = NULL; }
-      if(m_sessionFilter != NULL) { delete m_sessionFilter; m_sessionFilter = NULL; }
-      if(m_newsFilter != NULL) { delete m_newsFilter; m_newsFilter = NULL; }
-      if(m_timeMinuteFilter != NULL) { delete m_timeMinuteFilter; m_timeMinuteFilter = NULL; }
+      // Cleanup polymorphic filters
+      for(int i=0;i<ArraySize(m_filters);i++)
+      {
+         if(m_filters[i] != NULL) { delete m_filters[i]; m_filters[i] = NULL; }
+      }
+      ArrayFree(m_filters);
       
       // Ne pas supprimer m_chartManager car il est géré ailleurs
       HideAlert();
    }
 
-   //+------------------------------------------------------------------+
-   //| Configuration initiale (COMPATIBILITÉ DESCENDANTE)              |
-   //+------------------------------------------------------------------+
-   void Initialize(
-      bool useTimeFilter, 
-      string hourRanges,
-      bool useDayFilter,
-      string dayRanges,
-      bool showVisualAlerts = true
-   )
-   {
-      // Initialiser TimeRange Filter si demandé
-      if(useTimeFilter && hourRanges != "")
-      {
-         InitTimeRangeFilter(true, hourRanges);
-      }
-      
-      // Initialiser DayRange Filter si demandé
-      if(useDayFilter && dayRanges != "")
-      {
-         InitDayRangeFilter(true, dayRanges);
-      }
-      
-      m_showVisualAlerts = showVisualAlerts;
-      
-      if(m_verboseLogging)
-      {
-         Print(m_logPrefix + "Initialized (Legacy Mode):");
-         Print("  Time Filter: ", useTimeFilter ? "ENABLED (" + hourRanges + ")" : "DISABLED");
-         Print("  Day Filter: ", useDayFilter ? "ENABLED (" + dayRanges + ")" : "DISABLED");
-         Print("  Visual Alerts: ", showVisualAlerts ? "ENABLED" : "DISABLED");
-      }
-   }
-
-   //+------------------------------------------------------------------+
-   //| Initialiser le filtre TimeRange (ex: "8-10;16-18")             |
-   //+------------------------------------------------------------------+
-   void InitTimeRangeFilter(bool enabled, string hourRanges)
-   {
-      if(!enabled || hourRanges == "")
-      {
-         if(m_timeRangeFilter != NULL) { delete m_timeRangeFilter; m_timeRangeFilter = NULL; }
-         m_hourRanges = "";
-         if(m_verboseLogging) Print(m_logPrefix + "TimeRange Filter: DISABLED");
-         return;
-      }
-      
-      m_timeRangeFilter = new TimeRangeFilter();
-      m_hourRanges = hourRanges;
-      
-      if(m_verboseLogging) Print(m_logPrefix + "TimeRange Filter: ENABLED (" + hourRanges + ")");
-   }
-
-   //+------------------------------------------------------------------+
-   //| Initialiser le filtre DayRange (ex: "1-5" = Lundi-Vendredi)    |
-   //+------------------------------------------------------------------+
-   void InitDayRangeFilter(bool enabled, string dayRanges)
-   {
-      if(!enabled || dayRanges == "")
-      {
-         if(m_dayRangeFilter != NULL) { delete m_dayRangeFilter; m_dayRangeFilter = NULL; }
-         m_dayRanges = "";
-         if(m_verboseLogging) Print(m_logPrefix + "DayRange Filter: DISABLED");
-         return;
-      }
-      
-      m_dayRangeFilter = new DayRangeFilter();
-      m_dayRanges = dayRanges;
-      
-      if(m_verboseLogging) Print(m_logPrefix + "DayRange Filter: ENABLED (" + dayRanges + ")");
-   }
-
-   //+------------------------------------------------------------------+
-   //| Initialiser le filtre Session (ex: SESSION_OVERLAP)            |
-   //+------------------------------------------------------------------+
-   void InitSessionFilter(bool enabled, ENUM_TRADING_SESSION session, int avoidOpeningMinutes)
-   {
-      if(!enabled)
-      {
-         if(m_sessionFilter != NULL) { delete m_sessionFilter; m_sessionFilter = NULL; }
-         m_session = SESSION_ALL;
-         m_avoidOpeningMinutes = 0;
-         if(m_verboseLogging) Print(m_logPrefix + "Session Filter: DISABLED");
-         return;
-      }
-      
-      m_sessionFilter = new SessionFilter();
-      m_session = session;
-      m_avoidOpeningMinutes = avoidOpeningMinutes;
-      
-      if(m_verboseLogging) Print(m_logPrefix + "Session Filter: ENABLED (Session: " + IntegerToString(session) + ", Avoid: " + IntegerToString(avoidOpeningMinutes) + "min)");
-   }
-
-   //+------------------------------------------------------------------+
-   //| Initialiser le filtre News                                     |
-   //+------------------------------------------------------------------+
-   void InitNewsFilter(bool enabled, string currencies, string keywords, 
-                       int stopBefore, int startAfter, int daysLookup, 
-                       ENUM_NEWS_SEPARATOR separator)
-   {
-      if(!enabled || currencies == "" || keywords == "")
-      {
-         if(m_newsFilter != NULL) { delete m_newsFilter; m_newsFilter = NULL; }
-         m_newsCurrencies = "";
-         m_newsKeywords = "";
-         m_newsStopBefore = 0;
-         m_newsStartAfter = 0;
-         m_newsDaysLookup = 0;
-         m_newsSeparator = NEWS_COMMA;
-         if(m_verboseLogging) Print(m_logPrefix + "News Filter: DISABLED");
-         return;
-      }
-      
-      m_newsFilter = new NewsFilter();
-      m_newsCurrencies = currencies;
-      m_newsKeywords = keywords;
-      m_newsStopBefore = stopBefore;
-      m_newsStartAfter = startAfter;
-      m_newsDaysLookup = daysLookup;
-      m_newsSeparator = separator;
-      
-      if(m_verboseLogging) Print(m_logPrefix + "News Filter: ENABLED (" + currencies + ", " + keywords + ")");
-   }
-
-   //+------------------------------------------------------------------+
-   //| Initialiser le filtre TimeMinute (ex: "8:30-10:45;16:00")     |
-   //+------------------------------------------------------------------+
-   void InitTimeMinuteFilter(bool enabled, string timeMinuteRanges)
-   {
-      if(!enabled || timeMinuteRanges == "")
-      {
-         if(m_timeMinuteFilter != NULL) { delete m_timeMinuteFilter; m_timeMinuteFilter = NULL; }
-         m_timeMinuteRanges = "";
-         if(m_verboseLogging) Print(m_logPrefix + "TimeMinute Filter: DISABLED");
-         return;
-      }
-      
-      m_timeMinuteFilter = new TimeMinuteFilter();
-      m_timeMinuteRanges = timeMinuteRanges;
-      
-      if(m_verboseLogging) Print(m_logPrefix + "TimeMinute Filter: ENABLED (" + timeMinuteRanges + ")");
-   }
+   // (Legacy Initialize/Init* methods removed)
 
    //+------------------------------------------------------------------+
    //| Attacher un ChartManager                                         |
@@ -299,74 +126,48 @@ public:
       m_chartManager = chartMgr;
    }
 
+   // Ajouter un filtre polymorphique (nouvelle architecture)
+   // TradingTimeManager prend possession du filtre et le libérera dans le destructeur
+   bool AddFilter(ITimeFilter* filter)
+   {
+      if(filter == NULL)
+      {
+         Print("[TradingTimeManager] ERROR: Cannot add NULL filter");
+         return false;
+      }
+      if(!filter.IsEnabled())
+      {
+         Print("[TradingTimeManager] WARNING: Filter is disabled, not adding");
+         // Ne pas supprimer ici - laisser l'appelant gérer
+         return false;
+      }
+      int sz = ArraySize(m_filters);
+      ArrayResize(m_filters, sz + 1);
+      m_filters[sz] = filter;
+      Print("[TradingTimeManager] ✅ Filter added: ", filter.GetDescription());
+      return true;
+   }
+
    //+------------------------------------------------------------------+
    //| Vérification principale du trading                              |
    //| Architecture modulaire avec gestion NULL-safe                  |
    //+------------------------------------------------------------------+
    bool IsTradingAllowed()
    {
-      // Si aucun filtre n'est actif, le trading est toujours autorisé
-      if(m_timeRangeFilter == NULL && m_dayRangeFilter == NULL && 
-         m_sessionFilter == NULL && m_newsFilter == NULL && 
-         m_timeMinuteFilter == NULL)
+      // Utiliser uniquement les filtres polymorphiques
+      for(int i=0;i<ArraySize(m_filters);i++)
       {
-         UpdateStatus(TRADING_ACTIVE);
-         return true;
-      }
-      
-      // Vérifier chaque filtre - SI NULL, retourner TRUE (filtre non actif)
-      
-      // 1. TimeRange Filter
-      if(m_timeRangeFilter != NULL)
-      {
-         if(!IsTimeRangeAllowed())
+         if(m_filters[i] != NULL && m_filters[i].IsEnabled())
          {
-            UpdateStatus(TRADING_BLOCKED_HOUR);
-            return false;
+            if(!m_filters[i].IsTradingAllowed())
+            {
+               // Identifier le type de filtre qui bloque
+               ENUM_TRADING_STATUS blockStatus = IdentifyFilterStatus(m_filters[i]);
+               UpdateStatus(blockStatus);
+               return false;
+            }
          }
       }
-      
-      // 2. DayRange Filter
-      if(m_dayRangeFilter != NULL)
-      {
-         if(!IsDayRangeAllowed())
-         {
-            UpdateStatus(TRADING_BLOCKED_DAY);
-            return false;
-         }
-      }
-      
-      // 3. Session Filter
-      if(m_sessionFilter != NULL)
-      {
-         if(!IsSessionAllowed())
-         {
-            UpdateStatus(TRADING_BLOCKED_SESSION);
-            return false;
-         }
-      }
-      
-      // 4. News Filter
-      if(m_newsFilter != NULL)
-      {
-         if(!IsNewsAllowed())
-         {
-            UpdateStatus(TRADING_BLOCKED_NEWS);
-            return false;
-         }
-      }
-      
-      // 5. TimeMinute Filter
-      if(m_timeMinuteFilter != NULL)
-      {
-         if(!IsTimeMinuteAllowed())
-         {
-            UpdateStatus(TRADING_BLOCKED_TIME_MINUTE);
-            return false;
-         }
-      }
-      
-      // Tous les filtres actifs sont OK
       UpdateStatus(TRADING_ACTIVE);
       return true;
    }
@@ -374,25 +175,7 @@ public:
    //+------------------------------------------------------------------+
    //| Vérification rapide sans mise à jour de l'affichage             |
    //+------------------------------------------------------------------+
-   bool IsTradingAllowedQuick()
-   {
-      // TimeRange Filter
-      if(m_timeRangeFilter != NULL && !IsTimeRangeAllowed()) return false;
-      
-      // DayRange Filter
-      if(m_dayRangeFilter != NULL && !IsDayRangeAllowed()) return false;
-      
-      // Session Filter
-      if(m_sessionFilter != NULL && !IsSessionAllowed()) return false;
-      
-      // News Filter
-      if(m_newsFilter != NULL && !IsNewsAllowed()) return false;
-      
-      // TimeMinute Filter
-      if(m_timeMinuteFilter != NULL && !IsTimeMinuteAllowed()) return false;
-      
-      return true;
-   }
+  // (IsTradingAllowedQuick removed in polymorphic-only architecture)
 
    //+------------------------------------------------------------------+
    //| Obtenir le statut actuel                                        |
@@ -440,11 +223,14 @@ public:
       
       // Afficher les filtres actifs
       info += "Active Filters:\n";
-      if(m_timeRangeFilter != NULL) info += "  ✓ TimeRange\n";
-      if(m_dayRangeFilter != NULL) info += "  ✓ DayRange\n";
-      if(m_sessionFilter != NULL) info += "  ✓ Session\n";
-      if(m_newsFilter != NULL) info += "  ✓ News\n";
-      if(m_timeMinuteFilter != NULL) info += "  ✓ TimeMinute\n";
+      if(ArraySize(m_filters) > 0)
+      {
+         for(int i=0;i<ArraySize(m_filters);i++)
+         {
+            if(m_filters[i] != NULL && m_filters[i].IsEnabled())
+               info += "  ✓ " + m_filters[i].GetDescription() + "\n";
+         }
+      }
       
       // Informations actuelles
       MqlDateTime dt;
@@ -534,60 +320,30 @@ public:
    }
 
 private:
-   //+------------------------------------------------------------------+
-   //| Vérifier si l'heure actuelle est autorisée                      |
-   //+------------------------------------------------------------------+
-   bool IsTimeRangeAllowed()
-   {
-      if(m_timeRangeFilter == NULL) return true;
-      
-      // Utiliser la vraie fonction du filtre avec un nom différent
-      return ::IsTimeRangeAllowed(true, m_hourRanges);
-   }
+   // (All legacy private Is*Allowed helpers removed)
 
    //+------------------------------------------------------------------+
-   //| Vérifier si le jour actuel est autorisé                         |
+   //| Identifier le type de filtre qui bloque                         |
    //+------------------------------------------------------------------+
-   bool IsDayRangeAllowed()
+   ENUM_TRADING_STATUS IdentifyFilterStatus(ITimeFilter* filter)
    {
-      if(m_dayRangeFilter == NULL) return true;
+      if(filter == NULL) return TRADING_BLOCKED_MULTIPLE;
       
-      // Utiliser la vraie fonction du filtre avec un nom différent
-      return ::IsDayRangeAllowed(true, m_dayRanges);
-   }
-
-   //+------------------------------------------------------------------+
-   //| Vérifier si la session actuelle est autorisée                   |
-   //+------------------------------------------------------------------+
-   bool IsSessionAllowed()
-   {
-      if(m_sessionFilter == NULL) return true;
+      string desc = filter.GetDescription();
       
-      // Utiliser la vraie fonction du filtre avec un nom différent
-      return ::IsSessionAllowedCustom(m_session, m_avoidOpeningMinutes);
-   }
-
-   //+------------------------------------------------------------------+
-   //| Vérifier si les news permettent le trading                      |
-   //+------------------------------------------------------------------+
-   bool IsNewsAllowed()
-   {
-      if(m_newsFilter == NULL) return true;
-      
-      // Utiliser la vraie fonction du filtre avec un nom différent
-      return ::IsNewsAllowed(m_newsCurrencies, m_newsKeywords, m_newsStopBefore, 
-                            m_newsStartAfter, m_newsDaysLookup, m_newsSeparator);
-   }
-
-   //+------------------------------------------------------------------+
-   //| Vérifier si l'heure/minute actuelle est autorisée               |
-   //+------------------------------------------------------------------+
-   bool IsTimeMinuteAllowed()
-   {
-      if(m_timeMinuteFilter == NULL) return true;
-      
-      // Utiliser la vraie fonction du filtre avec un nom différent
-      return ::IsTimeMinuteAllowed(true, m_timeMinuteRanges);
+      // Détecter le type de filtre par sa description
+      if(StringFind(desc, "TimeRange") >= 0)
+         return TRADING_BLOCKED_HOUR;
+      else if(StringFind(desc, "DayRange") >= 0)
+         return TRADING_BLOCKED_DAY;
+      else if(StringFind(desc, "Session") >= 0)
+         return TRADING_BLOCKED_SESSION;
+      else if(StringFind(desc, "News") >= 0)
+         return TRADING_BLOCKED_NEWS;
+      else if(StringFind(desc, "TimeMinute") >= 0)
+         return TRADING_BLOCKED_TIME_MINUTE;
+      else
+         return TRADING_BLOCKED_MULTIPLE;
    }
 
    //+------------------------------------------------------------------+
@@ -625,7 +381,7 @@ private:
                string alertMessage = GetBlockMessage(newStatus);
                color alertColor = GetBlockColor(newStatus);
                
-               m_chartManager.ShowAlert(alertMessage, alertColor, 36);
+               m_chartManager.ShowAlert(alertMessage, alertColor, 12);
                m_lastAlertTime = currentTime;
                
                if(m_verboseLogging && statusChanged)
@@ -673,7 +429,7 @@ private:
          case TRADING_BLOCKED_HOUR:
             return clrOrange;
          case TRADING_BLOCKED_DAY:
-            return clrYellow;
+            return clrOrange;
          case TRADING_BLOCKED_SESSION:
             return clrBlue;
          case TRADING_BLOCKED_NEWS:

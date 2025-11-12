@@ -22,6 +22,8 @@
 //| - DayRanges="5-1" : trading Vendredi à Lundi (weekend)           |
 //+------------------------------------------------------------------+
 #property strict
+// New architecture include
+#include "ITimeFilter.mqh"
 
 //---------------------------- Inputs (reusable) ---------------------
 // ATTENTION DEVELOPPEUR : Pour utiliser ce DayRangeFilter dans votre EA, 
@@ -129,17 +131,14 @@ bool IsDayRangeAllowed(bool useFilter, string dayRanges)
 //+------------------------------------------------------------------+
 //| Classe de gestion des filtres par jours de la semaine            |
 //+------------------------------------------------------------------+
-class DayRangeFilter
+class DayRangeFilter : public ITimeFilter
 {
 private:
    // Configuration
-   bool              m_useFilter;
-   string            m_dayRanges;         // Ex: "1-5;0"  (0=Dim,1=Lun,..,6=Sam)
-   
-   // Logging (anti-spam)
+   bool              m_enabled;
+   string            m_configRanges;      // Ex: "1-5;0"  (0=Sun,1=Mon,..,6=Sat)
+   bool              m_allowed[7];        // Parsed once
    int               m_lastLoggedDay;
-   string            m_logPrefix;
-   string            m_lastBlockReason;
 
    // Noms des jours pour l'affichage
    static string     m_dayNames[];
@@ -150,11 +149,13 @@ public:
    //+------------------------------------------------------------------+
    DayRangeFilter()
    {
-      m_useFilter = false;
-      m_dayRanges = "";
+      m_enabled = false;
+      m_configRanges = "";
       m_lastLoggedDay = -1;
       m_logPrefix = "[DayRangeFilter] ";
-      m_lastBlockReason = "";
+      m_lastLoggedState = true;
+      m_lastLogTime = 0;
+      for(int i=0;i<7;i++) m_allowed[i] = true; // default allow all
       
       // Initialiser les noms des jours si pas encore fait
       if(ArraySize(m_dayNames) == 0)
@@ -173,46 +174,64 @@ public:
    //+------------------------------------------------------------------+
    //| Configuration                                                    |
    //+------------------------------------------------------------------+
-   void SetFilter(bool enabled, string ranges)
+   bool Initialize(bool enabled, string dayRanges)
    {
-      m_useFilter = enabled;
-      m_dayRanges = ranges;
-   }
+      m_enabled = enabled;
+      m_configRanges = dayRanges;
+      for(int i=0;i<7;i++) m_allowed[i] = true; // if empty -> allow all
+      if(!enabled || dayRanges == "" || dayRanges == " ")
+         return true;
 
-   void SetLogPrefix(string prefix)
-   {
-      m_logPrefix = prefix;
-   }
+      // reset and parse explicit config
+      for(int j=0;j<7;j++) m_allowed[j] = false;
 
-   // Chargement rapide depuis une configuration simple
-   void InitFromInputs(bool useFilter, string dayRanges)
-   {
-      m_useFilter = useFilter;
-      m_dayRanges = dayRanges;
+      string tokens[]; int n = StringSplit(dayRanges, ';', tokens);
+      for(int k=0;k<n;k++)
+      {
+         string token = tokens[k]; StringTrimLeft(token); StringTrimRight(token);
+         if(token == "") continue;
+         int dash = StringFind(token, "-");
+         if(dash >= 0)
+         {
+            int startD = (int)StringToInteger(StringSubstr(token, 0, dash));
+            int endD   = (int)StringToInteger(StringSubstr(token, dash + 1));
+            if(startD < 0 || startD > 6 || endD < 0 || endD > 6) return false;
+            if(startD <= endD)
+            {
+               for(int d=startD; d<=endD; d++) m_allowed[d] = true;
+            }
+            else
+            {
+               for(int d2=startD; d2<=6; d2++) m_allowed[d2] = true;
+               for(int d3=0; d3<=endD; d3++) m_allowed[d3] = true;
+            }
+         }
+         else
+         {
+            int d = (int)StringToInteger(token);
+            if(d < 0 || d > 6) return false;
+            m_allowed[d] = true;
+         }
+      }
+      Print(m_logPrefix + "Initialized with day config: " + dayRanges);
+      return true;
    }
 
    //+------------------------------------------------------------------+
    //| Vérifications principales                                       |
    //+------------------------------------------------------------------+
-   bool IsTradingAllowed()
+   bool IsTradingAllowed() override
    {
-      if(!m_useFilter) return true;
+      if(!m_enabled) return true;
 
       int currentDay = CurrentWeekDay();
-      bool allowed = IsDayAllowedCustom(m_dayRanges, currentDay);
-
+      bool allowed = (currentDay >= 0 && currentDay < 7 ? m_allowed[currentDay] : true);
       if(!allowed && m_lastLoggedDay != currentDay)
       {
          string dayName = (currentDay >= 0 && currentDay < 7) ? m_dayNames[currentDay] : "Unknown";
-         Print(m_logPrefix + "Jour non autorisé: ", dayName, " (", currentDay, ") | Ranges: ", m_dayRanges);
+         LogIfChanged(allowed, StringFormat("Trading blocked on %s (%d)", dayName, currentDay));
          m_lastLoggedDay = currentDay;
-         m_lastBlockReason = "Day not in allowed ranges";
       }
-      else if(allowed)
-      {
-         m_lastBlockReason = "";
-      }
-
       return allowed;
    }
 
@@ -237,29 +256,35 @@ public:
       return (dayIndex >= 0 && dayIndex < 7) ? m_dayNames[dayIndex] : "Unknown";
    }
 
-   // Raison du blocage lors du dernier appel à IsTradingAllowed()
-   string GetLastBlockReason() const
-   {
-      return m_lastBlockReason;
-   }
-
    // Représentation humaine des plages configurées
    string Describe() const
    {
-      if(!m_useFilter) return "Day range filter disabled";
-      return "Days: " + m_dayRanges;
+      if(!m_enabled) return "DayRange: Disabled";
+      return "DayRange: Config [" + m_configRanges + "]";
    }
 
    // Obtenir les plages de jours configurées
    string GetDayRanges() const
    {
-      return m_dayRanges;
+      return m_configRanges;
    }
 
    // Vérifier si le filtre est activé
-   bool IsEnabled() const
+   bool IsEnabled() const override
    {
-      return m_useFilter;
+      return m_enabled;
+   }
+
+   virtual string GetDescription() const override
+   {
+      if(!m_enabled) return "DayRange: Disabled";
+      return "DayRange: Active";
+   }
+
+   virtual string GetStatusMessage() const override
+   {
+      if(!m_enabled) return "DayRange: OFF";
+      return "DayRange: ON [" + m_configRanges + "]";
    }
 
 private:

@@ -73,8 +73,8 @@ public:
       ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, C'38,166,154');
       
       // Bid/Ask lines - Silver selon l'image
-      ChartSetInteger(m_chartId, CHART_COLOR_BID, clrSilver);                // Bid - Silver
-      ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrSilver);                // Ask - Silver
+      ChartSetInteger(m_chartId, CHART_COLOR_BID, clrLimeGreen);                // Bid - Silver
+      ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrBlack);                // Ask - Silver
       
       // Enable Bid/Ask lines display
       ChartSetInteger(m_chartId, CHART_SHOW_BID_LINE, true);
@@ -506,7 +506,7 @@ public:
    bool ShowAlert(
       string alertText,
       color textColor = clrYellow,
-      int fontSize = 42,
+      int fontSize = 16,
       string font = "Arial Black"
    )
    {
@@ -526,8 +526,8 @@ public:
       int chartWidth = (int)ChartGetInteger(m_chartId, CHART_WIDTH_IN_PIXELS);
       int chartHeight = (int)ChartGetInteger(m_chartId, CHART_HEIGHT_IN_PIXELS);
       
-      int xDistance = (chartWidth > 0) ? chartWidth / 2 - 150 : 400;  // Centrage approximatif
-      int yDistance = (chartHeight > 0) ? chartHeight / 2 - 25 : 300; // Centrage approximatif
+      int xDistance =  chartWidth / 2 ;  // Centrage approximatif
+      int yDistance =  chartHeight / 2; // Centrage approximatif
       
       ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, xDistance);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, yDistance);
