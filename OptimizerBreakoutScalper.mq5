@@ -86,6 +86,7 @@ input string   InpNewsBlockMsg = "";         // News Block Message (empty = use 
 
 input group "🆕 FVG FILTER"
 input int      InpUseFvgFilter = -1;        // Use FVG Filter (-1=config, 0=false, 1=true)
+input double   InpPriceTolerancePercent = -1.0; // Price Tolerance Percent (-1 = use config default, 0.01 = 0.01%)
 
 input group "🚨 ALERT MESSAGES"
 input string   InpHourBlockMsg = "";         // Hour Block Message (empty = use config default)
@@ -95,10 +96,22 @@ input string   InpBothBlockMsg = "";         // Both Block Message (empty = use 
 input group "🔧 LOGGING"
 input int      InpLogLevel = -1;            // Log Level (-1=config, 0=NONE, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG)
 
+input group "🔍 FVG MEMORY DEBUG"
+input bool     InpFVGMemoryDebug = true;   // 🔍 FVG Memory Debug Mode
+
 // Global variables
 CConfigManager* configManager = NULL;
 ForexScalperBot* bot = NULL;
 string currentSymbol = "";
+
+// Helper: cleanup resources and fail initialization
+int CleanupAndFail(string errorMsg)
+{
+   Logger::Error("❌ " + errorMsg);
+   if(bot != NULL) { delete bot; bot = NULL; }
+   if(configManager != NULL) { delete configManager; configManager = NULL; }
+   return(INIT_FAILED);
+}
 
 //+------------------------------------------------------------------+
 //| Helper function to convert int to bool with -1 = use config     |
@@ -151,15 +164,7 @@ ENUM_LOG_LEVEL IntToLogLevel(int value, ENUM_LOG_LEVEL configValue)
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // 🔧 Empêcher réinit si juste changement de timeframe
-   static bool alreadyInitialized = false;
-   static string lastSymbol = "";
    
-   if(alreadyInitialized && lastSymbol == Symbol())
-   {
-      Logger::Info("⚠️ Chart timeframe changed - EA configuration unchanged");
-      return(INIT_SUCCEEDED);
-   }
    
    // Initialize Logger first with default or input value
    // (will be updated later with config value if InpLogLevel == -1)
@@ -262,6 +267,8 @@ int OnInit()
       config.expirationBars = InpExpirationBars;
    if(InpOrderDistancePoints >= 0)
       config.orderDistPoints = InpOrderDistancePoints;
+   if(InpPriceTolerancePercent >= 0.0)
+      config.priceTolerancePercent = InpPriceTolerancePercent;
    if(InpSlippagePoints >= 0)
       config.slippagePoints = InpSlippagePoints;
    if(InpEntryOffsetPoints >= 0)
@@ -325,6 +332,7 @@ int OnInit()
    {
       Logger::SetLevel(config.logLevel);
    }
+    
    
    // Log which values were overridden
    LogInputOverrides();
@@ -332,30 +340,25 @@ int OnInit()
    // Validate symbol is available before creating bot
    if(!ValidateSymbolAvailable(currentSymbol))
    {
-      Logger::Error("❌ ERROR: Symbol " + currentSymbol + " is not available for trading");
-      delete configManager;
-      configManager = NULL;
-      return(INIT_FAILED);
+      return(CleanupAndFail("ERROR: Symbol " + currentSymbol + " is not available for trading"));
    }
    
    // Initialize bot with configuration
-   bot = new ForexScalperBot(config);
+bot = new ForexScalperBot(config);
    if(bot == NULL)
    {
-      Logger::Error("❌ ERROR: Failed to create bot instance");
-      delete configManager;
-      configManager = NULL;
-      return(INIT_FAILED);
+      return(CleanupAndFail("ERROR: Failed to create bot instance"));
    }
    
    if(!bot.Initialize())
    {
-      Logger::Error("❌ ERROR: Bot initialization failed");
-      delete bot;
-      bot = NULL;
-      delete configManager;
-      configManager = NULL;
-      return(INIT_FAILED);
+      return(CleanupAndFail("ERROR: Bot initialization failed"));
+   }
+
+   if(config.orderDistPoints<=config.entryOffsetPoints)
+   {
+
+      return(CleanupAndFail("ERROR: Bot orderDistPoints underor equal entryOffsetPoints"));
    }
    
    // Display configuration info
@@ -366,10 +369,6 @@ int OnInit()
    Logger::Info("Strategy: " + config.strategyName);
    Logger::Info("Magic: " + IntegerToString(config.baseMagic));
    Logger::Info("Risk: " + DoubleToString(config.riskPercent, 1) + "%");
-   
-   // Mark as initialized
-   alreadyInitialized = true;
-   lastSymbol = currentSymbol;
    
    return(INIT_SUCCEEDED);
 }
@@ -405,6 +404,8 @@ void OnTick()
       bot.OnTick();
    }
 }
+
+
 
 //+------------------------------------------------------------------+
 //| Validate symbol is available for trading                         |
@@ -482,6 +483,7 @@ void DisplayConfigurationInfo(BotConfig &config)
       "Risk: %.1f%%\n" +
       "TP/SL: %d/%d points\n" +
       "Strategy: %s\n" +
+      "Order Distance: %d pts | Price Tolerance: %.3f%%\n" +
       "Bars Analysis: %d\n" +
       "Trading Hours: %s\n" +
       "Trailing TP: %s\n" +
@@ -495,6 +497,8 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.riskPercent,
       config.tpPoints, config.slPoints,
       strategyTypeStr,
+      config.orderDistPoints,
+      config.priceTolerancePercent,
       config.barsN,
       config.tradingTimeRanges != "" ? config.tradingTimeRanges : 
          StringFormat("%02d:00-%02d:00", config.startHour, config.endHour),
@@ -535,6 +539,7 @@ void LogInputOverrides()
    if(InpBarsAnalysis >= 0) { overrides += "  - Bars Analysis\n"; overrideCount++; }
    if(InpExpirationBars >= 0) { overrides += "  - Expiration Bars\n"; overrideCount++; }
    if(InpOrderDistancePoints >= 0) { overrides += "  - Order Distance Points\n"; overrideCount++; }
+   if(InpPriceTolerancePercent >= 0.0) { overrides += "  - Price Tolerance Percent\n"; overrideCount++; }
    if(InpSlippagePoints >= 0) { overrides += "  - Slippage Points\n"; overrideCount++; }
    if(InpEntryOffsetPoints >= 0) { overrides += "  - Entry Offset Points\n"; overrideCount++; }
    if(InpUseTrailingTP != -1) { overrides += "  - Use Trailing TP\n"; overrideCount++; }
@@ -564,16 +569,3 @@ void LogInputOverrides()
    }
 }
 
-//+------------------------------------------------------------------+
-//| Chart event handler                                              |
-//+------------------------------------------------------------------+
-void OnChartEvent(const int id,
-                  const long &lparam,
-                  const double &dparam,
-                  const string &sparam)
-{
-   if(bot != NULL)
-   {
-      // Forward chart events to bot if needed
-   }
-}

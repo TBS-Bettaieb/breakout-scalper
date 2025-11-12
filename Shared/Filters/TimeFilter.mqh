@@ -58,47 +58,14 @@ int CurrentHour()
 //| IMPORTANT: Cette fonction utilise les variables SHInput et EHInput |
 //| qui doivent être définies dans le fichier .mq5 principal        |
 //+------------------------------------------------------------------+
+/*
 bool IsTradingAllowed()
 {
-   int h = CurrentHour();
-   
-   // Si les deux sont à 0, pas de filtre
-   if(SHInput == 0 && EHInput == 0)
-   {
-      return true;
-   }
-   
-   bool allowed = false;
-   
-   if(SHInput < EHInput) 
-   {
-      // Plage normale même journée (ex: 7h-19h)
-      allowed = (h >= SHInput && h <= EHInput);
-   }
-   else if(SHInput > EHInput) 
-   {
-      // Plage overnight traverse minuit (ex: 22h-6h)
-      allowed = (h >= SHInput || h <= EHInput);
-   }
-   else if(SHInput == EHInput && SHInput > 0)
-   {
-      // Une seule heure spécifique
-      allowed = (h == SHInput);
-   }
-   
-   // Debug: afficher le statut du filtre temps (une fois par heure)
-   static int lastDebugHour = -1;
-   if(h != lastDebugHour)
-   {
-      if(allowed)
-         Print("✅ TimeFilter: Trading ALLOWED - Current=", h, "h, Range=", SHInput, "h-", EHInput, "h");
-      else
-         Print("🚫 TimeFilter: Trading BLOCKED - Current=", h, "h, Range=", SHInput, "h-", EHInput, "h");
-      lastDebugHour = h;
-   }
-   
-   return allowed;
+   // This global variant expects SHInput/EHInput inputs defined in the main .mq5.
+   // It is disabled here to avoid compilation when included without those inputs.
+   return true;
 }
+*/
 
 //+------------------------------------------------------------------+
 //| Fonction alternative avec paramètres explicites                 |
@@ -237,6 +204,7 @@ public:
       bool useMinuteFormat = RangesHasMinuteFormat(m_hourRanges);
 
       bool allowed;
+      int currentHourVal = CurrentHour();
       if(useMinuteFormat)
       {
          MqlDateTime dt; TimeToStruct(TimeGMT(), dt);
@@ -245,14 +213,13 @@ public:
       }
       else
       {
-         int currentHour = CurrentHour();
-         allowed = IsHourAllowedCustom(m_hourRanges, currentHour);
+         allowed = IsHourAllowedCustom(m_hourRanges, currentHourVal);
       }
 
-      if(!allowed && m_lastLoggedHour != currentHour)
+      if(!allowed && m_lastLoggedHour != currentHourVal)
       {
-         Print(m_logPrefix + "Heure non autorisée: ", currentHour, ":00 | Ranges: ", m_hourRanges);
-         m_lastLoggedHour = currentHour;
+         Print(m_logPrefix + "Heure non autorisée: ", currentHourVal, ":00 | Ranges: ", m_hourRanges);
+         m_lastLoggedHour = currentHourVal;
       }
 
       return allowed;
@@ -334,7 +301,7 @@ public:
       // Vérifier les jours
       if(m_useDayFilter)
       {
-         int currentDay = DayOfWeek();
+         int currentDay = CurrentWeekDay();
          if(!IsDayAllowedCustom(m_dayRanges, currentDay)) return false;
       }
 

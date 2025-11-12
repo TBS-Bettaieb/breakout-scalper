@@ -348,7 +348,7 @@ void DisplayInputParameters()
 void SaveConfigurationTemplate()
 {
    // Generate timestamp and filename
-   datetime currentTime = TimeCurrent();
+   datetime currentTime = TimeGMT();
    MqlDateTime dt;
    TimeToStruct(currentTime, dt);
    string timestamp = StringFormat("%04d%02d%02d_%02d%02d", 

@@ -94,8 +94,8 @@ public:
    bool CanSendBuyLimitOrder() { return (m_buyTotalPendingLimit <= 0); }
    bool CanSendSellLimitOrder() { return (m_sellTotalPendingLimit <= 0); }
 
-   bool CanSendBuyStopOrder()  { return (m_buyTotalPendingStop+m_sellTotalPendingLimit <= 0); }
-   bool CanSendSellStopOrder()  { return (m_sellTotalPendingStop +m_buyTotalPendingLimit <= 0); }
+   bool CanSendBuyStopOrder()  { return (m_buyTotalPendingStop+m_sellTotalPendingLimit+m_buyTotal <= 0); }
+   bool CanSendSellStopOrder()  { return (m_sellTotalPendingStop +m_buyTotalPendingLimit +m_sellTotal <= 0); }
    
    void DisplayCounters(const long chart_id = 0, const string name = "CounterInfo", const int corner = CORNER_LEFT_UPPER)
    {

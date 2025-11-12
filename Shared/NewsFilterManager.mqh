@@ -26,6 +26,7 @@ private:
    string            m_blockMessage;
    string            m_newsToAvoid[];
    bool              m_previousBlockedState;
+   bool              m_firstCheck;
 
 public:
    //--- Constructor
@@ -42,6 +43,7 @@ public:
       m_lastNewsTime = 0;
       m_blockMessage = "";
       m_previousBlockedState = false;
+      m_firstCheck = true;
    }
    
    //--- Initialize with parameters
@@ -60,6 +62,7 @@ public:
       m_lastNewsTime = 0;
       m_blockMessage = "";
       m_previousBlockedState = false;
+      m_firstCheck = true;
       
       // Parse key news into array
       string sep_str = (m_separator == COMMA) ? "," : ";";
@@ -71,7 +74,8 @@ public:
    //--- Main check function (port from IsUpcomingNews)
    bool IsNewsBlocking()
    {
-      if(!m_enabled) return false;
+      if(!m_enabled)
+         return false;
       
       // Check if we're still in the "wait after news" period (like original TrDisabledNews logic)
       if(m_isBlocked && m_lastNewsTime > 0 && 
@@ -94,15 +98,36 @@ public:
          ArrayResize(m_newsToAvoid, count);
       }
       
-      if(ArraySize(m_newsToAvoid) <= 0) return false;
+      bool hasKeywords = (ArraySize(m_newsToAvoid) > 0);
       
       // Get calendar events
       MqlCalendarValue values[];
       datetime starttime = TimeGMT();
       datetime endtime = starttime + 86400 * m_daysLookup;
       
-      if(!CalendarValueHistory(values, starttime, endtime)) 
+      if(!CalendarValueHistory(values, starttime, endtime))
+      {
+         Print("[NewsFilterManager] ⚠️ Could not retrieve calendar events");
          return false;
+      }
+      
+      // DEBUG: Logger les keywords parsés (seulement si changement d'état ou première fois)
+      if(m_firstCheck || m_isBlocked != m_previousBlockedState)
+      {
+         if(hasKeywords)
+         {
+            string kwList = "";
+            for(int x = 0; x < ArraySize(m_newsToAvoid); x++)
+               kwList += "[" + m_newsToAvoid[x] + "] ";
+            Print("[NewsFilterManager] 🔍 DEBUG: Parsed ", IntegerToString(ArraySize(m_newsToAvoid)), " keywords: ", kwList);
+         }
+         else
+         {
+            Print("[NewsFilterManager] 🔍 DEBUG: No keywords - will block ALL events for currencies: ", m_currencies);
+         }
+         Print("[NewsFilterManager] 🔍 DEBUG: Checking ", IntegerToString(ArraySize(values)), " calendar events");
+         m_firstCheck = false;
+      }
       
       // Check each calendar event
       for(int i = 0; i < ArraySize(values); i++)
@@ -116,23 +141,57 @@ public:
          // Check if currency matches our filter
          if(StringFind(m_currencies, country.currency) < 0) continue;
          
-         // Check if event name matches any of our keywords
-         for(int j = 0; j < ArraySize(m_newsToAvoid); j++)
+         datetime newsTime = values[i].time;
+         int secondsBefore = m_stopBeforeMin * 60;
+         int timeDiff = (int)(newsTime - TimeGMT());
+         
+         if(timeDiff < 0) continue; // Event already passed
+         
+         // Si pas de keywords, bloquer tous les événements des devises surveillées
+         if(!hasKeywords)
          {
-            if(StringFind(event.name, m_newsToAvoid[j]) >= 0)
+            if(timeDiff < secondsBefore)
             {
-               datetime newsTime = values[i].time;
-               int secondsBefore = m_stopBeforeMin * 60;
+               m_lastNewsTime = newsTime;
+               m_isBlocked = true;
+               m_blockMessage = "Trading disabled (all events): " + country.currency +
+                               " " + event.name + " at " +
+                               TimeToString(newsTime, TIME_MINUTES);
+               Print("[NewsFilterManager] 🚨 BLOCKING TRADING: ", m_blockMessage);
+               Print("[NewsFilterManager] 🔍 DEBUG Event (no keywords): ", event.name, 
+                     " | Time: ", TimeToString(newsTime), 
+                     " | TimeDiff: ", IntegerToString(timeDiff/60), " min",
+                     " | Threshold: ", IntegerToString(secondsBefore/60), " min");
+               return true;
+            }
+         }
+         else
+         {
+            // Check if event name matches any of our keywords (case-insensitive)
+            for(int j = 0; j < ArraySize(m_newsToAvoid); j++)
+            {
+               // Matching case-insensitive
+               string eventNameUpper = event.name;
+               StringToUpper(eventNameUpper);
+               string keywordUpper = m_newsToAvoid[j];
+               StringToUpper(keywordUpper);
                
-               // Check if news is within our "stop before" window
-               if(newsTime - TimeGMT() < secondsBefore)
+               if(StringFind(eventNameUpper, keywordUpper) >= 0)
                {
-                  m_lastNewsTime = newsTime;
-                  m_isBlocked = true;
-                  m_blockMessage = "Trading disabled: " + country.currency +
-                                  " " + event.name + " at " +
-                                  TimeToString(newsTime, TIME_MINUTES);
-                  return true;
+                  if(timeDiff < secondsBefore)
+                  {
+                     m_lastNewsTime = newsTime;
+                     m_isBlocked = true;
+                     m_blockMessage = "Trading disabled: " + country.currency +
+                                     " " + event.name + " at " +
+                                     TimeToString(newsTime, TIME_MINUTES);
+                     Print("[NewsFilterManager] 🚨 BLOCKING TRADING: ", m_blockMessage);
+                     Print("[NewsFilterManager] 🔍 DEBUG Event: ", event.name, 
+                           " | Time: ", TimeToString(newsTime), 
+                           " | TimeDiff: ", IntegerToString(timeDiff/60), " min",
+                           " | Threshold: ", IntegerToString(secondsBefore/60), " min");
+                     return true;
+                  }
                }
             }
          }
