@@ -310,7 +310,8 @@ private:
             m_config.tslCostMultiplier,         // 🆕 AJOUTER
             m_config.tslMinTriggerPoints,       // 🆕 AJOUTER
             m_config.priceTolerancePercent,
-            m_config.useFvgFilter               // 🆕 FVG FILTER
+            m_config.useFvgFilter,              // 🆕 FVG FILTER
+            m_config.baseBalance                // 🆕 Base balance for lot calculation
          );
          
          if(m_symbolTraders[i] == NULL)

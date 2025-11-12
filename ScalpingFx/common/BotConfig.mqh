@@ -21,6 +21,7 @@ struct BotConfig
    bool              useAllSymbols;
    ENUM_TIMEFRAMES   timeframe;
    double            riskPercent;
+   double            baseBalance;  // 🆕 Base balance for lot calculation (0 or negative = use account balance)
    int               tpPoints;
    int               slPoints;
    int               tslTriggerPoints;

@@ -23,6 +23,7 @@ struct OrderParams
    int               expirationBars;
    double            riskPercent;
    double            currentRiskMultiplier;
+   double            baseBalance;  // 🆕 Base balance for lot calculation (0 or negative = use account balance)
    string            tradeComment;
    CTrade           *trade; // pointer for compatibility with MQL5 passing
 };
@@ -45,6 +46,7 @@ public:
                                    const int expirationBars,
                                    const double riskPercent,
                                    const double currentRiskMultiplier,
+                                   const double baseBalance,  // 🆕 Add baseBalance parameter
                                    const string tradeComment,
                                    CTrade &trade)
    {
@@ -60,6 +62,7 @@ public:
       p.expirationBars = expirationBars;
       p.riskPercent = riskPercent;
       p.currentRiskMultiplier = currentRiskMultiplier;
+      p.baseBalance = baseBalance;  // 🆕 Set baseBalance
       p.tradeComment = tradeComment;
       p.trade = &trade;
       return p;
@@ -142,7 +145,10 @@ public:
    static double CalcLots(const OrderParams &params, const double slPoints)
    {
       double effectiveRisk = params.riskPercent * params.currentRiskMultiplier;
-      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * effectiveRisk / 100.0;
+      
+      // 🆕 Use baseBalance if > 0, otherwise use account balance
+      double balance = (params.baseBalance > 0.0) ? params.baseBalance : AccountInfoDouble(ACCOUNT_BALANCE);
+      double risk = balance * effectiveRisk / 100.0;
 
       double ticksize = SymbolInfoDouble(params.symbol, SYMBOL_TRADE_TICK_SIZE);
       double tickvalue = SymbolInfoDouble(params.symbol, SYMBOL_TRADE_TICK_VALUE);

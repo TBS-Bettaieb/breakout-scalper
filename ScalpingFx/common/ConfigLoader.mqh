@@ -27,6 +27,7 @@ public:
    {
       m_symbolCount = 0;
       m_config.priceTolerancePercent = 0.01;
+      m_config.baseBalance = 0.0;  // 🆕 Default: use account balance
    }
    
    // Virtual methods to be overridden by each group
@@ -96,11 +97,12 @@ protected:
    }
    
    // Setup risk and position sizing
-   void SetupRiskParams(double riskPercent, int tpPoints, int slPoints)
+   void SetupRiskParams(double riskPercent, int tpPoints, int slPoints, double baseBalance = 0.0)
    {
       m_config.riskPercent = riskPercent;
       m_config.tpPoints = tpPoints;
       m_config.slPoints = slPoints;
+      m_config.baseBalance = baseBalance;  // 🆕 Base balance (0 = use account balance)
    }
    
    // Setup trailing stop parameters

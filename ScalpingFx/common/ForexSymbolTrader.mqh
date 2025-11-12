@@ -40,6 +40,7 @@ private:
    
    // Paramètres de trading
    double            m_riskPercent;         // Risque par symbole
+   double            m_baseBalance;         // 🆕 Base balance for lot calculation (0 or negative = use account balance)
    int               m_tpPoints;            // Take Profit en points
    int               m_slPoints;            // Stop Loss en points
    int               m_tslTriggerPoints;    // Points en profit avant TSL
@@ -125,13 +126,15 @@ public:
                      double tslCostMultiplier = 1.5,        // 🆕 AJOUTER
                      int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
                      double priceTolerancePercent = 0.01,
-                     bool useFvgFilter = false)             // 🆕 FVG FILTER
+                     bool useFvgFilter = false,             // 🆕 FVG FILTER
+                     double baseBalance = 0.0)              // 🆕 Base balance (0 = use account balance)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_timeframe = timeframe;
       m_counterMgr.Init(m_symbol, m_magicNumber, m_position);
       m_riskPercent = riskPercent;
+      m_baseBalance = baseBalance;  // 🆕 Set base balance
       m_tpPoints = tpPoints;
       m_slPoints = slPoints;
       m_tslTriggerPoints = tslTriggerPoints;
@@ -1095,6 +1098,7 @@ private:
          m_expirationBars,
          m_riskPercent,
          m_currentRiskMultiplier,
+         m_baseBalance,  // 🆕 Pass base balance
          m_tradeComment,
          m_trade
       );
