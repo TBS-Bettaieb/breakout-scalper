@@ -297,7 +297,7 @@ public:
       SetupStrategyParams(4, 80,130,10,90);
       SetupRiskMultiplier(true, "14:00-15:30", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(true);
+      SetupFvgFilter(true,0.02);
       SetupBlockMessages();
       
       return true;
@@ -321,9 +321,9 @@ public:
       SetupDynamicTrailingStop(200, 150, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("13:00-21:00");
       SetupStrategyParams(6, 60, 120,50,20);
-      SetupRiskMultiplier(false, "14:30-18:00", 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(true, "14:30-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(false);
+      SetupFvgFilter(true,0.03);
       SetupBlockMessages();
       
       return true;
@@ -349,7 +349,7 @@ public:
       SetupStrategyParams(5, 50, 140,50,200);
       SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(true);
+      SetupFvgFilter(true,0.03);
       SetupBlockMessages();
       
       return true;
@@ -375,7 +375,7 @@ public:
       SetupStrategyParams(6, 70, 80,30,60);
       SetupRiskMultiplier(true, "14:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
-      SetupFvgFilter(true,0.02);
+      SetupFvgFilter(true,0.03);
       SetupBlockMessages();
       
       return true;

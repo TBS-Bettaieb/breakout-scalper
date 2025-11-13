@@ -459,12 +459,18 @@ void DisplayConfigurationInfo(BotConfig &config)
    
    string riskMultStr = "OFF";
    if(config.useRiskMultiplier) {
-      riskMultStr = StringFormat("x%.1f (%s)", 
-                                config.riskMultiplier,
-                                config.riskMultTimeRanges != "" ? config.riskMultTimeRanges : 
-                                StringFormat("%02d:%02d-%02d:%02d", 
-                                           config.riskMultStartHour, config.riskMultStartMinute,
-                                           config.riskMultEndHour, config.riskMultEndMinute));
+      string riskMultTimeStr = "";
+      if(config.riskMultTimeRanges != "") {
+         riskMultTimeStr = config.riskMultTimeRanges;
+      } else if(config.riskMultStartHour == 0 && config.riskMultEndHour == 0 && 
+                config.riskMultStartMinute == 0 && config.riskMultEndMinute == 0) {
+         riskMultTimeStr = "N/A";
+      } else {
+         riskMultTimeStr = StringFormat("%02d:%02d-%02d:%02d", 
+                                       config.riskMultStartHour, config.riskMultStartMinute,
+                                       config.riskMultEndHour, config.riskMultEndMinute);
+      }
+      riskMultStr = StringFormat("x%.1f (%s)", config.riskMultiplier, riskMultTimeStr);
    }
    
    string newsFilterStr = "OFF";
@@ -507,7 +513,8 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.priceTolerancePercent,
       config.barsN,
       config.tradingTimeRanges != "" ? config.tradingTimeRanges : 
-         StringFormat("%02d:00-%02d:00", config.startHour, config.endHour),
+         (config.startHour == 0 && config.endHour == 0 ? "24/7" : 
+          StringFormat("%02d:00-%02d:00", config.startHour, config.endHour)),
       trailingTPStr,
       riskMultStr,
       newsFilterStr,

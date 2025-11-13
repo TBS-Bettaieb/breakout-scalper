@@ -287,17 +287,6 @@ public:
       if(totalOrders == 0)
          return false;
 
-      // 🔥 PROTECTION 2: Warning si trop d'ordres
-      if(totalOrders > 50)
-      {
-         static datetime lastWarning = 0;
-         if(TimeCurrent() - lastWarning > 3600)
-         {
-            Print("⚠️ [", m_symbol, "] Trop d'ordres pending: ", totalOrders, " - Performance affectée");
-            lastWarning = TimeCurrent();
-         }
-      }
-
       // 🔥 PROTECTION 3: Limiter le nombre de vérifications FVG par barre
       static int checksThisBar = 0;
       static datetime lastBarTime = 0;
@@ -309,7 +298,7 @@ public:
          lastBarTime = currentBarTime;
       }
       
-      if(checksThisBar >= 40)
+      if(checksThisBar >= 1000)
       {
          Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (40/barre)");
          return false;
