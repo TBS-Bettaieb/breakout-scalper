@@ -346,7 +346,7 @@ public:
       SetupRiskParams(0.5, 7000, 5500);
       SetupDynamicTrailingStop(500, 550, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("08:00-21:00");
-      SetupStrategyParams(5, 50, 140,50,200);
+      SetupStrategyParams(5, 50, 440,50,200);
       SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupFvgFilter(true,0.03);

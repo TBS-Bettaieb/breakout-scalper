@@ -234,7 +234,11 @@ public:
    //+------------------------------------------------------------------+
    void OnTick()
    {
-      // 🔥 CRITIQUE: Vérifier nouvelle barre AVANT toute opération FVG
+
+		// Vérifier les nouvelles positions pour créer les lignes TP/SL
+      CheckForNewPositions();
+   
+	   // 🔥 CRITIQUE: Vérifier nouvelle barre AVANT toute opération FVG
       if(!IsNewBar()) return;
       
       m_fvgFilter.OnNewBar();
@@ -249,8 +253,7 @@ public:
       // Mettre à jour les compteurs
       UpdateCounters();
       
-      // Vérifier les nouvelles positions pour créer les lignes TP/SL
-      CheckForNewPositions();
+      
       
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
       if(m_counterMgr.CanSendBuyStopOrder())
@@ -343,7 +346,7 @@ public:
             if(CancelOrderById(violatingTicket))
             {
                RemoveFromCheckedList(violatingTicket);
-               return true;
+               //return true;
             }
             else
             {
@@ -736,6 +739,9 @@ public:
          }
       }
       
+      // Vérifier si c'est une nouvelle position
+      bool isNewPosition = (index == -1);
+      
       // Ajouter ou mettre à jour
       if(index == -1)
       {
@@ -749,9 +755,13 @@ public:
       m_positionCosts[index].breakEvenSL = breakEvenSL;
       m_positionCosts[index].dynamicTrigger = dynamicTrigger;
       
-      Print("💰 #", ticket, " [", m_symbol, "] Costs: ", DoubleToString(totalCostPoints, 1), " pts",
-            " | BE: ", DoubleToString(breakEvenSL, 5),
-            " | Dynamic Trigger: ", dynamicTrigger, " pts");
+      // Afficher seulement lors de la création de la position
+      if(isNewPosition)
+      {
+         Print("💰 #", ticket, " [", m_symbol, "] Costs: ", DoubleToString(totalCostPoints, 1), " pts",
+               " | BE: ", DoubleToString(breakEvenSL, 5),
+               " | Dynamic Trigger: ", dynamicTrigger, " pts");
+      }
    }
    
    //+------------------------------------------------------------------+
