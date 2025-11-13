@@ -235,18 +235,18 @@ public:
    void OnTick()
    {
 
-		// Vérifier les nouvelles positions pour créer les lignes TP/SL
-      CheckForNewPositions();
+		// 🆕 Vérifier FVG UNE SEULE FOIS par barre
+      CheckFvgDisqualifier();
    
 	   // 🔥 CRITIQUE: Vérifier nouvelle barre AVANT toute opération FVG
       if(!IsNewBar()) return;
       
-      m_fvgFilter.OnNewBar();
+      
+      // Vérifier les nouvelles positions pour créer les lignes TP/SL
+      CheckForNewPositions();
       
       
       
-      // 🆕 Vérifier FVG UNE SEULE FOIS par barre
-      CheckFvgDisqualifier();
       
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
@@ -285,6 +285,7 @@ public:
       if(!m_fvgFilter.GetEnabled())
          return false;
 
+      m_fvgFilter.OnNewBar();
       // 🔥 PROTECTION 1: Skip si aucun ordre pending
       int totalOrders = OrdersTotal();
       if(totalOrders == 0)
@@ -301,9 +302,9 @@ public:
          lastBarTime = currentBarTime;
       }
       
-      if(checksThisBar >= 1000)
+      if(checksThisBar >= 2000)
       {
-         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (40/barre)");
+         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (2000/barre)");
          return false;
       }
       checksThisBar++;
@@ -337,8 +338,10 @@ public:
          
          // Vérifier avec le filtre FVG
          bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
+         bool isAllowedSecondary = m_fvgFilter.IsTradeAllowedByFVGSecondary(orderPrice, orderSL, isBuy);
          bool hasFVGBetweenEntryAndSL = m_fvgFilter.HasFVGBetweenEntryAndSL(orderPrice, orderSL, isBuy);
-         if(!isAllowed )
+         bool hasFVGBetweenEntryAndSLSecondary = m_fvgFilter.HasFVGBetweenEntryAndSLSecondary(orderPrice, orderSL, isBuy);
+         if(!isAllowed||!isAllowedSecondary )
          {
 	            Print("🚫 FVG DISQUALIFIED [", m_symbol, "] ", (isBuy ? "BUY" : "SELL"),
                   " Stop #", violatingTicket, " | Entry: ", DoubleToString(orderPrice, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)));
@@ -360,7 +363,7 @@ public:
             // FVG OK - marquer comme vérifié
             MarkAsChecked(violatingTicket);
          }
-         if(!isAllowed || hasFVGBetweenEntryAndSL)
+         if(!isAllowed || hasFVGBetweenEntryAndSL||!isAllowedSecondary || hasFVGBetweenEntryAndSLSecondary)
          {
             OrderManager::SendLimitOrder(BuildOrderParams(), !isBuy, orderPrice,"FVG");
          }

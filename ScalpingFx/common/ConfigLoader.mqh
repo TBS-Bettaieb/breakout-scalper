@@ -170,8 +170,8 @@ protected:
    }
    
    // Setup news filter parameters
-   void SetupNewsFilter(bool useNewsFilter, string currencies = "USD,EUR,GBP", 
-                       string keyEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP",
+   void SetupNewsFilter(bool useNewsFilter, string currencies = "", 
+                       string keyEvents = "",
                        int stopBeforeMin = 15, int startAfterMin = 15, int lookupDays = 7)
    {
       m_config.useNewsFilter = useNewsFilter;
@@ -291,12 +291,12 @@ public:
       
       // Configuration from USDJPY_FXScalper.mq5
       SetupBasicParams("USDJPY Scalper V1.0", "USDJPY Scalper", 37483647);
-      SetupRiskParams(1.0, 390,180);
-      SetupDynamicTrailingStop(30, 20, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupRiskParams(1.0, 390,220);
+      SetupDynamicTrailingStop(10, 5,1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("13:00-18:00");
       SetupStrategyParams(4, 80,130,10,90);
       SetupRiskMultiplier(true, "14:00-15:30", 2.0, "London-NY Overlap");
-      SetupNewsFilter(true);
+      SetupNewsFilter(true,"USD,JPY");
       SetupFvgFilter(true,0.02);
       SetupBlockMessages();
       

@@ -8,18 +8,28 @@ class FVGTradeFilter
 private:
    bool             m_enabled;
    FVGDetector*     m_detector;
+   FVGDetector*     m_detectorSecondary;  // 🆕 Deuxième détecteur
    string           m_symbol;
    ENUM_TIMEFRAMES  m_timeframe;
+   ENUM_TIMEFRAMES  m_timeframeSecondary;  // 🆕 Deuxième timeframe
    double           m_radiusPts;
+   bool             m_useSecondary;        // 🆕 Activer/désactiver le deuxième timeframe
+   datetime         m_lastProcessPrimary;    // 🆕 Dernier temps de traitement principal
+   datetime         m_lastProcessSecondary;  // 🆕 Dernier temps de traitement secondaire
 
 public:
    FVGTradeFilter()
      {
       m_enabled   = false;
       m_detector  = NULL;
+      m_detectorSecondary = NULL;  // 🆕
       m_symbol    = "";
       m_timeframe = PERIOD_CURRENT;
+      m_timeframeSecondary = PERIOD_CURRENT;  // 🆕
       m_radiusPts = 500.0;
+      m_useSecondary = false;  // 🆕
+      m_lastProcessPrimary = 0;      // 🆕
+      m_lastProcessSecondary = 0;   // 🆕
      }
 
    ~FVGTradeFilter()
@@ -28,6 +38,12 @@ public:
         {
          delete m_detector;
          m_detector = NULL;
+        }
+      // 🆕 Libérer le deuxième détecteur
+      if(m_detectorSecondary != NULL)
+        {
+         delete m_detectorSecondary;
+         m_detectorSecondary = NULL;
         }
      }
 
@@ -63,18 +79,39 @@ public:
          lastLog = now;
       }
       
-      m_detector.ProcessTimeframe(m_timeframe);
-      m_detector.UpdateInvalidation(m_timeframe);
+      // 🆕 Traiter le détecteur principal toutes les 5 minutes (300 secondes)
+      if(now - m_lastProcessPrimary >= 300)
+        {
+         m_detector.ProcessTimeframe(m_timeframe);
+         m_detector.UpdateInvalidation(m_timeframe);
+         m_lastProcessPrimary = now;
+        }
+      
+      // 🆕 Traiter le deuxième timeframe toutes les 1 minute (60 secondes)
+      if(m_useSecondary && m_detectorSecondary != NULL)
+        {
+         if(now - m_lastProcessSecondary >= 60)
+           {
+            m_detectorSecondary.ProcessTimeframe(m_timeframeSecondary);
+            m_detectorSecondary.UpdateInvalidation(m_timeframeSecondary);
+            m_lastProcessSecondary = now;
+           }
+        }
      }
 
      
-   void Init(const string symbol, const ENUM_TIMEFRAMES tf, const bool enabled)
+   // 🆕 Initialisation avec deuxième timeframe optionnel
+   void Init(const string symbol, const ENUM_TIMEFRAMES tf, const bool enabled, 
+             const ENUM_TIMEFRAMES tfSecondary = PERIOD_M1, const bool useSecondary = true)
      {
       m_symbol    = symbol;
       m_timeframe = tf;
+      m_timeframeSecondary = tfSecondary;  // 🆕
+      m_useSecondary = useSecondary;        // 🆕
       m_enabled   = enabled;
       if(!m_enabled) return;
 
+      // Initialiser le détecteur principal
       if(m_detector != NULL)
         {
          delete m_detector;
@@ -84,8 +121,8 @@ public:
 
       FVGConfig cfg;
       cfg.atrPeriod        = 14;
-      cfg.minGapATRPercent = 5.0;
-      cfg.epsilonPts        = 0.1;
+      cfg.minGapATRPercent = 0.5;
+      cfg.epsilonPts        = 0.02;
       cfg.invalidatePct    = 30.0;
       cfg.mode             = WICK_TOUCH;
       cfg.lookbackBars     = 50;  // 🔥 OPTIMISATION: 300→50 pour réduire mémoire
@@ -101,6 +138,29 @@ public:
       // initial pass
       m_detector.ProcessTimeframe(m_timeframe);
       m_detector.UpdateInvalidation(m_timeframe);
+      
+      // 🆕 Initialiser le deuxième détecteur si activé
+      if(m_useSecondary && tfSecondary != PERIOD_CURRENT)
+        {
+         if(m_detectorSecondary != NULL)
+           {
+            delete m_detectorSecondary;
+            m_detectorSecondary = NULL;
+           }
+         m_detectorSecondary = new FVGDetector();
+         
+         if(!m_detectorSecondary.Init(m_symbol, m_timeframeSecondary, cfg))
+           {
+            delete m_detectorSecondary;
+            m_detectorSecondary = NULL;
+            Print("⚠️ [FVG] Échec initialisation deuxième timeframe: ", EnumToString(m_timeframeSecondary));
+           }
+         else
+           {
+            m_detectorSecondary.ProcessTimeframe(m_timeframeSecondary);
+            m_detectorSecondary.UpdateInvalidation(m_timeframeSecondary);
+           }
+        }
      }
 
    void SetEnabled(bool enabled)
@@ -168,7 +228,8 @@ public:
          {
             Print("🚫 [FVG BLOCK] ", (isBuy ? "BUY" : "SELL"), 
                   " | SL: ", DoubleToString(stopLoss, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)),
-                  " | FVG[", i, "]: ", DoubleToString(fvgLow, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)), 
+                  " | FVG[", i, "] ", EnumToString(m_timeframe), ": ", 
+                  DoubleToString(fvgLow, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)), 
                   "-", DoubleToString(fvgHigh, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)));
             return false;
          }
@@ -193,6 +254,104 @@ public:
            m_detector.GetBullishFVGs(fvgs, true);
         else
            m_detector.GetBearishFVGs(fvgs, true);
+
+        int fvgsCount = ArraySize(fvgs);
+        int maxCheck = MathMin(fvgsCount, 20);
+
+        for(int i = 0; i < maxCheck; i++)
+        {
+           if(!fvgs[i].IsValid)
+              continue;
+
+           double fvgHigh = fvgs[i].top;
+           double fvgLow  = fvgs[i].bottom;
+           if(fvgHigh < fvgLow)
+           {
+              double tmp = fvgHigh;
+              fvgHigh = fvgLow;
+              fvgLow = tmp;
+           }
+
+           if(rangeHigh >= fvgLow && rangeLow <= fvgHigh)
+              return true;
+        }
+
+        return false;
+     }
+
+   // 🆕 Vérifier si le trade est autorisé par FVG sur le timeframe secondaire
+   bool IsTradeAllowedByFVGSecondary(const double entryPrice, const double stopLoss, const bool isBuy)
+     {
+      if(!m_enabled || !m_useSecondary || m_detectorSecondary == NULL)
+         return true;
+
+      FVGInfo fvgs[];
+      if(isBuy)
+         m_detectorSecondary.GetBullishFVGs(fvgs, true);
+      else
+         m_detectorSecondary.GetBearishFVGs(fvgs, true);
+
+      int fvgsCount = ArraySize(fvgs);
+      
+      // 🔥 WARNING si trop de FVGs
+      if(fvgsCount > 20)
+      {
+         static datetime lastWarning = 0;
+         datetime now = TimeCurrent();
+         if(now - lastWarning > 3600)
+         {
+            Print("⚠️ [FVG Secondary] TROP DE FVGs: ", fvgsCount, " (devrait être < 20)");
+            Print("⚠️ [FVG Secondary] Réduire lookbackBars dans Init()");
+            lastWarning = now;
+         }
+      }
+      
+      // 🔥 PROTECTION: Limiter à 20 FVGs max pour éviter ralentissement
+      int maxCheck = MathMin(fvgsCount, 20);
+      
+      for(int i = 0; i < maxCheck; i++)
+        {
+         if(!fvgs[i].IsValid) continue;
+
+         // Normaliser top/bottom
+         double fvgHigh = fvgs[i].top;
+         double fvgLow  = fvgs[i].bottom;
+         if(fvgHigh < fvgLow)
+           {
+            double t = fvgHigh;
+            fvgHigh  = fvgLow;
+            fvgLow   = t;
+           }
+
+         bool stopInside = (stopLoss <= fvgHigh && stopLoss >= fvgLow);
+         if(stopInside)
+         {
+            Print("🚫 [FVG BLOCK Secondary] ", (isBuy ? "BUY" : "SELL"), 
+                  " | SL: ", DoubleToString(stopLoss, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)),
+                  " | FVG[", i, "] ", EnumToString(m_timeframeSecondary), ": ", 
+                  DoubleToString(fvgLow, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)), 
+                  "-", DoubleToString(fvgHigh, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)));
+            return false;
+         }
+        }
+      
+      return true;
+     }
+
+   // 🆕 Vérifier si un FVG existe entre entry et SL sur le timeframe secondaire
+   bool HasFVGBetweenEntryAndSLSecondary(const double entryPrice, const double stopLoss, const bool isBuy)
+     {
+        if(!m_enabled || !m_useSecondary || m_detectorSecondary == NULL)
+           return false;
+
+        double rangeHigh = MathMax(entryPrice, stopLoss);
+        double rangeLow  = MathMin(entryPrice, stopLoss);
+
+        FVGInfo fvgs[];
+        if(isBuy)
+           m_detectorSecondary.GetBullishFVGs(fvgs, true);
+        else
+           m_detectorSecondary.GetBearishFVGs(fvgs, true);
 
         int fvgsCount = ArraySize(fvgs);
         int maxCheck = MathMin(fvgsCount, 20);
