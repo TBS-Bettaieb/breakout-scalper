@@ -70,10 +70,57 @@ public:
 
 
    //+------------------------------------------------------------------+
+   //| Vérifier s'il existe déjà un ordre du même type au même prix     |
+   //+------------------------------------------------------------------+
+   static bool HasPendingOrderAtPrice(const OrderParams &params, bool isBuy, double entryPrice, double tolerance = 0.0)
+   {
+      int totalOrders = OrdersTotal();
+      ENUM_ORDER_TYPE orderType = isBuy ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT;
+      
+      // Si tolerance n'est pas spécifiée, utiliser un point comme tolérance
+      if(tolerance == 0.0)
+         tolerance = params.point;
+      
+      for(int i = 0; i < totalOrders; i++)
+      {
+         ulong ticket = OrderGetTicket(i);
+         if(!OrderSelect(ticket)) continue;
+         
+         // Vérifier le symbole et le magic number
+         if(OrderGetString(ORDER_SYMBOL) != params.symbol) continue;
+         if(OrderGetInteger(ORDER_MAGIC) != params.magicNumber) continue;
+         
+         // Vérifier le type d'ordre
+         if(OrderGetInteger(ORDER_TYPE) != orderType) continue;
+         
+         // Vérifier le prix (avec tolérance)
+         double orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+         if(MathAbs(orderPrice - entryPrice) <= tolerance)
+         {
+            return true;  // Ordre trouvé au même prix
+         }
+      }
+      
+      return false;  // Aucun ordre trouvé
+   }
+
+   //+------------------------------------------------------------------+
    //| Envoyer un ordre Limit (délègue aux variantes BUY/SELL)         |
    //+------------------------------------------------------------------+
    static bool SendLimitOrder(const OrderParams &params, bool isBuy, double entry, const string tradeCommentSuffix = "")
    {
+      // 🆕 Vérifier s'il existe déjà un ordre du même type au même prix
+      double adjustedEntry = isBuy ? 
+         (entry - (params.entryOffsetPoints * params.point)) : 
+         (entry + (params.entryOffsetPoints * params.point));
+      
+      if(HasPendingOrderAtPrice(params, isBuy, adjustedEntry))
+      {
+         Print("⚠️ Ordre ", (isBuy ? "BUY" : "SELL"), " LIMIT déjà existant pour ", params.symbol, 
+               " au prix ", adjustedEntry, " - Ordre ignoré");
+         return false;
+      }
+      
       return isBuy ? SendBuyLimitOrder(params, entry, tradeCommentSuffix) : SendSellLimitOrder(params, entry, tradeCommentSuffix);
    }
 

@@ -164,16 +164,6 @@ public:
       // Check trading permissions (NewsFilter is now integrated in TradingTimeManager)
       bool tradingAllowed = m_timeManager.IsTradingAllowed();
       
-      // 🔍 DEBUG: Logger les permissions de trading (toutes les 100 ticks pour éviter spam)
-      static int debugTickCount = 0;
-      debugTickCount++;
-      if(debugTickCount % 100 == 0 || !tradingAllowed)
-      {
-         Print("[ForexScalperBot] 🔍 DEBUG OnTick:");
-         Print("   useNewsFilter = ", m_config.useNewsFilter);
-         Print("   tradingAllowed = ", tradingAllowed);
-         Print("   status = ", m_timeManager.GetStatusDescription());
-      }
       
       // 🆕 Obtenir multiplicateur actuel
       double currentRiskMultiplier = 1.0;
