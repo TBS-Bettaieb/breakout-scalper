@@ -10,6 +10,7 @@
 // User Input Parameters
 input string   InpSymbolToTrade = "";  // Symbol to trade (empty = use chart symbol)
 input double   InpRiskPercent = -1.0;  // Risk per trade (%) (-1 = use group default)
+input double   InpBaseBalance = 0.0;  // 🆕 Base Balance for lot calculation (0 or negative = use account balance)
 input double   InpPriceTolerancePercent = -1.0; // Price Tolerance Percent (-1 = use group default, 0.01 = 0.01%)
 input bool     InpUseFvgFilter = false;  // Enable FVG Filter
 
@@ -92,6 +93,14 @@ int OnInit()
       config.riskPercent = InpRiskPercent;
       Logger::Warning("⚠️ Risk percent overridden to: " + DoubleToString(InpRiskPercent, 1) + "%");
    }
+   
+   // 🆕 Override base balance if specified in input
+   if(InpBaseBalance > 0.0)
+   {
+      config.baseBalance = InpBaseBalance;
+      Logger::Warning("⚠️ Base balance overridden to: " + DoubleToString(InpBaseBalance, 2));
+   }
+   
    if(InpPriceTolerancePercent >= 0.0)
    {
       config.priceTolerancePercent = InpPriceTolerancePercent;
@@ -233,12 +242,14 @@ void DisplayConfigurationInfo(BotConfig &config)
       fvgFilterStr = "ON";
    }
    
+   string baseBalanceStr = (config.baseBalance > 0.0) ? DoubleToString(config.baseBalance, 2) : "Account Balance";
+   
    string info = StringFormat(
       "=== %s ===\n" +
       "Symbol: %s\n" +
       "Magic: %d\n" +
       "Timeframe: %s\n" +
-      "Risk: %.1f%%\n" +
+      "Risk: %.1f%% | Base Balance: %s\n" +
       "TP/SL: %d/%d points\n" +
       "Strategy: %s\n" +
       "Order Distance: %d pts | Price Tolerance: %.3f%%\n" +
@@ -253,6 +264,7 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.baseMagic,
       EnumToString(config.timeframe),
       config.riskPercent,
+      baseBalanceStr,
       config.tpPoints, config.slPoints,
       strategyTypeStr,
       config.orderDistPoints,

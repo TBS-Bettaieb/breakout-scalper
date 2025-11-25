@@ -37,6 +37,7 @@ input ENUM_TIMEFRAMES InpTradingTimeframe = PERIOD_CURRENT; // Trading Timeframe
 
 input group "💰 RISK MANAGEMENT"
 input double   InpRiskPercent = -1.0;       // Risk Percent (-1 = use config default)
+input double   InpBaseBalance = -1.0;      // 🆕 Base Balance (-1 = use config default, 0 = use account balance)
 input int      InpTpPoints = -1;            // Take Profit Points (-1 = use config default)
 input int      InpSlPoints = -1;            // Stop Loss Points (-1 = use config default)
 
@@ -236,6 +237,8 @@ int OnInit()
    // Risk Management
    if(InpRiskPercent > 0.0)
       config.riskPercent = InpRiskPercent;
+   if(InpBaseBalance >= 0.0)  // 🆕 >= 0.0 car -1 = config, 0 = account balance, >0 = override
+      config.baseBalance = InpBaseBalance;
    if(InpTpPoints >= 0)
       config.tpPoints = InpTpPoints;
    if(InpSlPoints >= 0)
@@ -456,12 +459,18 @@ void DisplayConfigurationInfo(BotConfig &config)
    
    string riskMultStr = "OFF";
    if(config.useRiskMultiplier) {
-      riskMultStr = StringFormat("x%.1f (%s)", 
-                                config.riskMultiplier,
-                                config.riskMultTimeRanges != "" ? config.riskMultTimeRanges : 
-                                StringFormat("%02d:%02d-%02d:%02d", 
-                                           config.riskMultStartHour, config.riskMultStartMinute,
-                                           config.riskMultEndHour, config.riskMultEndMinute));
+      string riskMultTimeStr = "";
+      if(config.riskMultTimeRanges != "") {
+         riskMultTimeStr = config.riskMultTimeRanges;
+      } else if(config.riskMultStartHour == 0 && config.riskMultEndHour == 0 && 
+                config.riskMultStartMinute == 0 && config.riskMultEndMinute == 0) {
+         riskMultTimeStr = "N/A";
+      } else {
+         riskMultTimeStr = StringFormat("%02d:%02d-%02d:%02d", 
+                                       config.riskMultStartHour, config.riskMultStartMinute,
+                                       config.riskMultEndHour, config.riskMultEndMinute);
+      }
+      riskMultStr = StringFormat("x%.1f (%s)", config.riskMultiplier, riskMultTimeStr);
    }
    
    string newsFilterStr = "OFF";
@@ -475,12 +484,14 @@ void DisplayConfigurationInfo(BotConfig &config)
       fvgFilterStr = "ON";
    }
    
+   string baseBalanceStr = (config.baseBalance > 0.0) ? DoubleToString(config.baseBalance, 2) : "Account Balance";
+   
    string info = StringFormat(
       "=== %s ===\n" +
       "Symbol: %s\n" +
       "Magic: %d\n" +
       "Timeframe: %s\n" +
-      "Risk: %.1f%%\n" +
+      "Risk: %.1f%% | Base Balance: %s\n" +
       "TP/SL: %d/%d points\n" +
       "Strategy: %s\n" +
       "Order Distance: %d pts | Price Tolerance: %.3f%%\n" +
@@ -495,13 +506,15 @@ void DisplayConfigurationInfo(BotConfig &config)
       config.baseMagic,
       EnumToString(config.timeframe),
       config.riskPercent,
+      baseBalanceStr,
       config.tpPoints, config.slPoints,
       strategyTypeStr,
       config.orderDistPoints,
       config.priceTolerancePercent,
       config.barsN,
       config.tradingTimeRanges != "" ? config.tradingTimeRanges : 
-         StringFormat("%02d:00-%02d:00", config.startHour, config.endHour),
+         (config.startHour == 0 && config.endHour == 0 ? "24/7" : 
+          StringFormat("%02d:00-%02d:00", config.startHour, config.endHour)),
       trailingTPStr,
       riskMultStr,
       newsFilterStr,
@@ -528,6 +541,7 @@ void LogInputOverrides()
    if(InpSymbolsList != "") { overrides += "  - Symbols List\n"; overrideCount++; }
    if(InpUseAllMarketWatch != -1) { overrides += "  - Use All Market Watch\n"; overrideCount++; }
    if(InpRiskPercent >= 0.0) { overrides += "  - Risk Percent\n"; overrideCount++; }
+   if(InpBaseBalance >= 0.0) { overrides += "  - Base Balance\n"; overrideCount++; }
    if(InpTpPoints >= 0) { overrides += "  - TP Points\n"; overrideCount++; }
    if(InpSlPoints >= 0) { overrides += "  - SL Points\n"; overrideCount++; }
    if(InpTslTriggerPoints >= 0) { overrides += "  - TSL Trigger Points\n"; overrideCount++; }

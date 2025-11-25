@@ -40,6 +40,7 @@ private:
    
    // Paramètres de trading
    double            m_riskPercent;         // Risque par symbole
+   double            m_baseBalance;         // 🆕 Base balance for lot calculation (0 or negative = use account balance)
    int               m_tpPoints;            // Take Profit en points
    int               m_slPoints;            // Stop Loss en points
    int               m_tslTriggerPoints;    // Points en profit avant TSL
@@ -125,13 +126,15 @@ public:
                      double tslCostMultiplier = 1.5,        // 🆕 AJOUTER
                      int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
                      double priceTolerancePercent = 0.01,
-                     bool useFvgFilter = false)             // 🆕 FVG FILTER
+                     bool useFvgFilter = false,             // 🆕 FVG FILTER
+                     double baseBalance = 0.0)              // 🆕 Base balance (0 = use account balance)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_timeframe = timeframe;
       m_counterMgr.Init(m_symbol, m_magicNumber, m_position);
       m_riskPercent = riskPercent;
+      m_baseBalance = baseBalance;  // 🆕 Set base balance
       m_tpPoints = tpPoints;
       m_slPoints = slPoints;
       m_tslTriggerPoints = tslTriggerPoints;
@@ -231,23 +234,26 @@ public:
    //+------------------------------------------------------------------+
    void OnTick()
    {
-      // 🔥 CRITIQUE: Vérifier nouvelle barre AVANT toute opération FVG
+
+		// 🆕 Vérifier FVG UNE SEULE FOIS par barre
+      CheckFvgDisqualifier();
+   
+	   // 🔥 CRITIQUE: Vérifier nouvelle barre AVANT toute opération FVG
       if(!IsNewBar()) return;
       
-      m_fvgFilter.OnNewBar();
+      
+      // Vérifier les nouvelles positions pour créer les lignes TP/SL
+      CheckForNewPositions();
       
       
       
-      // 🆕 Vérifier FVG UNE SEULE FOIS par barre
-      CheckFvgDisqualifier();
       
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
       // Mettre à jour les compteurs
       UpdateCounters();
       
-      // Vérifier les nouvelles positions pour créer les lignes TP/SL
-      CheckForNewPositions();
+      
       
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
       if(m_counterMgr.CanSendBuyStopOrder())
@@ -279,21 +285,11 @@ public:
       if(!m_fvgFilter.GetEnabled())
          return false;
 
+      m_fvgFilter.OnNewBar();
       // 🔥 PROTECTION 1: Skip si aucun ordre pending
       int totalOrders = OrdersTotal();
       if(totalOrders == 0)
          return false;
-
-      // 🔥 PROTECTION 2: Warning si trop d'ordres
-      if(totalOrders > 50)
-      {
-         static datetime lastWarning = 0;
-         if(TimeCurrent() - lastWarning > 3600)
-         {
-            Print("⚠️ [", m_symbol, "] Trop d'ordres pending: ", totalOrders, " - Performance affectée");
-            lastWarning = TimeCurrent();
-         }
-      }
 
       // 🔥 PROTECTION 3: Limiter le nombre de vérifications FVG par barre
       static int checksThisBar = 0;
@@ -306,9 +302,9 @@ public:
          lastBarTime = currentBarTime;
       }
       
-      if(checksThisBar >= 40)
+      if(checksThisBar >= 2000)
       {
-         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (40/barre)");
+         Print("⚠️ [", m_symbol, "] Limite FVG checks atteinte (2000/barre)");
          return false;
       }
       checksThisBar++;
@@ -342,8 +338,10 @@ public:
          
          // Vérifier avec le filtre FVG
          bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
+         bool isAllowedSecondary = m_fvgFilter.IsTradeAllowedByFVGSecondary(orderPrice, orderSL, isBuy);
          bool hasFVGBetweenEntryAndSL = m_fvgFilter.HasFVGBetweenEntryAndSL(orderPrice, orderSL, isBuy);
-         if(!isAllowed )
+         bool hasFVGBetweenEntryAndSLSecondary = m_fvgFilter.HasFVGBetweenEntryAndSLSecondary(orderPrice, orderSL, isBuy);
+         if(!isAllowed||!isAllowedSecondary )
          {
 	            Print("🚫 FVG DISQUALIFIED [", m_symbol, "] ", (isBuy ? "BUY" : "SELL"),
                   " Stop #", violatingTicket, " | Entry: ", DoubleToString(orderPrice, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS)));
@@ -351,7 +349,7 @@ public:
             if(CancelOrderById(violatingTicket))
             {
                RemoveFromCheckedList(violatingTicket);
-               return true;
+               //return true;
             }
             else
             {
@@ -365,7 +363,7 @@ public:
             // FVG OK - marquer comme vérifié
             MarkAsChecked(violatingTicket);
          }
-         if(!isAllowed || hasFVGBetweenEntryAndSL)
+         if(!isAllowed || hasFVGBetweenEntryAndSL||!isAllowedSecondary || hasFVGBetweenEntryAndSLSecondary)
          {
             OrderManager::SendLimitOrder(BuildOrderParams(), !isBuy, orderPrice,"FVG");
          }
@@ -744,6 +742,9 @@ public:
          }
       }
       
+      // Vérifier si c'est une nouvelle position
+      bool isNewPosition = (index == -1);
+      
       // Ajouter ou mettre à jour
       if(index == -1)
       {
@@ -757,9 +758,13 @@ public:
       m_positionCosts[index].breakEvenSL = breakEvenSL;
       m_positionCosts[index].dynamicTrigger = dynamicTrigger;
       
-      Print("💰 #", ticket, " [", m_symbol, "] Costs: ", DoubleToString(totalCostPoints, 1), " pts",
-            " | BE: ", DoubleToString(breakEvenSL, 5),
-            " | Dynamic Trigger: ", dynamicTrigger, " pts");
+      // Afficher seulement lors de la création de la position
+      if(isNewPosition)
+      {
+         Print("💰 #", ticket, " [", m_symbol, "] Costs: ", DoubleToString(totalCostPoints, 1), " pts",
+               " | BE: ", DoubleToString(breakEvenSL, 5),
+               " | Dynamic Trigger: ", dynamicTrigger, " pts");
+      }
    }
    
    //+------------------------------------------------------------------+
@@ -1095,6 +1100,7 @@ private:
          m_expirationBars,
          m_riskPercent,
          m_currentRiskMultiplier,
+         m_baseBalance,  // 🆕 Pass base balance
          m_tradeComment,
          m_trade
       );

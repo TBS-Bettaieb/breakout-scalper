@@ -23,6 +23,7 @@ struct OrderParams
    int               expirationBars;
    double            riskPercent;
    double            currentRiskMultiplier;
+   double            baseBalance;  // 🆕 Base balance for lot calculation (0 or negative = use account balance)
    string            tradeComment;
    CTrade           *trade; // pointer for compatibility with MQL5 passing
 };
@@ -45,6 +46,7 @@ public:
                                    const int expirationBars,
                                    const double riskPercent,
                                    const double currentRiskMultiplier,
+                                   const double baseBalance,  // 🆕 Add baseBalance parameter
                                    const string tradeComment,
                                    CTrade &trade)
    {
@@ -60,6 +62,7 @@ public:
       p.expirationBars = expirationBars;
       p.riskPercent = riskPercent;
       p.currentRiskMultiplier = currentRiskMultiplier;
+      p.baseBalance = baseBalance;  // 🆕 Set baseBalance
       p.tradeComment = tradeComment;
       p.trade = &trade;
       return p;
@@ -67,10 +70,57 @@ public:
 
 
    //+------------------------------------------------------------------+
+   //| Vérifier s'il existe déjà un ordre du même type au même prix     |
+   //+------------------------------------------------------------------+
+   static bool HasPendingOrderAtPrice(const OrderParams &params, bool isBuy, double entryPrice, double tolerance = 0.0)
+   {
+      int totalOrders = OrdersTotal();
+      ENUM_ORDER_TYPE orderType = isBuy ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT;
+      
+      // Si tolerance n'est pas spécifiée, utiliser un point comme tolérance
+      if(tolerance == 0.0)
+         tolerance = params.point;
+      
+      for(int i = 0; i < totalOrders; i++)
+      {
+         ulong ticket = OrderGetTicket(i);
+         if(!OrderSelect(ticket)) continue;
+         
+         // Vérifier le symbole et le magic number
+         if(OrderGetString(ORDER_SYMBOL) != params.symbol) continue;
+         if(OrderGetInteger(ORDER_MAGIC) != params.magicNumber) continue;
+         
+         // Vérifier le type d'ordre
+         if(OrderGetInteger(ORDER_TYPE) != orderType) continue;
+         
+         // Vérifier le prix (avec tolérance)
+         double orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+         if(MathAbs(orderPrice - entryPrice) <= tolerance)
+         {
+            return true;  // Ordre trouvé au même prix
+         }
+      }
+      
+      return false;  // Aucun ordre trouvé
+   }
+
+   //+------------------------------------------------------------------+
    //| Envoyer un ordre Limit (délègue aux variantes BUY/SELL)         |
    //+------------------------------------------------------------------+
    static bool SendLimitOrder(const OrderParams &params, bool isBuy, double entry, const string tradeCommentSuffix = "")
    {
+      // 🆕 Vérifier s'il existe déjà un ordre du même type au même prix
+      double adjustedEntry = isBuy ? 
+         (entry - (params.entryOffsetPoints * params.point)) : 
+         (entry + (params.entryOffsetPoints * params.point));
+      
+      if(HasPendingOrderAtPrice(params, isBuy, adjustedEntry))
+      {
+         Print("⚠️ Ordre ", (isBuy ? "BUY" : "SELL"), " LIMIT déjà existant pour ", params.symbol, 
+               " au prix ", adjustedEntry, " - Ordre ignoré");
+         return false;
+      }
+      
       return isBuy ? SendBuyLimitOrder(params, entry, tradeCommentSuffix) : SendSellLimitOrder(params, entry, tradeCommentSuffix);
    }
 
@@ -142,7 +192,10 @@ public:
    static double CalcLots(const OrderParams &params, const double slPoints)
    {
       double effectiveRisk = params.riskPercent * params.currentRiskMultiplier;
-      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * effectiveRisk / 100.0;
+      
+      // 🆕 Use baseBalance if > 0, otherwise use account balance
+      double balance = (params.baseBalance > 0.0) ? params.baseBalance : AccountInfoDouble(ACCOUNT_BALANCE);
+      double risk = balance * effectiveRisk / 100.0;
 
       double ticksize = SymbolInfoDouble(params.symbol, SYMBOL_TRADE_TICK_SIZE);
       double tickvalue = SymbolInfoDouble(params.symbol, SYMBOL_TRADE_TICK_VALUE);
