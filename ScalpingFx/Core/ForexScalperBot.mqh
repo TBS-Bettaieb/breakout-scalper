@@ -301,7 +301,8 @@ private:
             m_config.tslMinTriggerPoints,       // 🆕 AJOUTER
             m_config.priceTolerancePercent,
             m_config.useFvgFilter,              // 🆕 FVG FILTER
-            m_config.baseBalance                // 🆕 Base balance for lot calculation
+            m_config.baseBalance,                // 🆕 Base balance for lot calculation
+            m_config.swingDetectionMode          // Mode de détection swing
          );
          
          if(m_symbolTraders[i] == NULL)

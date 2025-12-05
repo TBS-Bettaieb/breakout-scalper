@@ -39,6 +39,7 @@
 #define ORDER_DISTANCE_POINTS  100
 #define SLIPPAGE_POINTS        10                               // NEW
 #define ENTRY_OFFSET_POINTS    0                             // NEW
+#define SWING_DETECTION_MODE   SWING_DETECTION_WICK            // Mode de détection swing (WICK ou BODY)
 
 // 🎯 TRAILING TAKE PROFIT
 #define USE_TRAILING_TP        true
@@ -108,6 +109,7 @@ int OnInit()
    config.orderDistPoints = ORDER_DISTANCE_POINTS;
    config.slippagePoints = SLIPPAGE_POINTS;
    config.entryOffsetPoints = ENTRY_OFFSET_POINTS;
+   config.swingDetectionMode = SWING_DETECTION_MODE;
    config.useTrailingTP = USE_TRAILING_TP;
    config.trailingTPMode = TRAILING_TP_MODE;
    config.customTPLevels = CUSTOM_TP_LEVELS;

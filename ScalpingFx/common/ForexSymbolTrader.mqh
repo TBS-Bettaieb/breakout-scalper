@@ -51,6 +51,7 @@ private:
    int               m_slippagePoints;      // NEW: Slippage tolerance
    int               m_entryOffsetPoints;   // NEW: Entry offset for Stop orders
    double            m_priceTolerancePercent; // NEW: Price tolerance percentage
+   ENUM_SWING_DETECTION_MODE m_swingDetectionMode; // Mode de détection swing
    string            m_tradeComment;        // Commentaire des trades
    
    // Objets de trading
@@ -127,7 +128,8 @@ public:
                      int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
                      double priceTolerancePercent = 0.01,
                      bool useFvgFilter = false,             // 🆕 FVG FILTER
-                     double baseBalance = 0.0)              // 🆕 Base balance (0 = use account balance)
+                     double baseBalance = 0.0,              // 🆕 Base balance (0 = use account balance)
+                     ENUM_SWING_DETECTION_MODE swingDetectionMode = SWING_DETECTION_WICK) // Mode de détection swing
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -145,6 +147,7 @@ public:
       m_slippagePoints = slippagePoints;
       m_entryOffsetPoints = entryOffsetPoints;
       m_priceTolerancePercent = (priceTolerancePercent > 0.0 ? priceTolerancePercent : 0.01);
+      m_swingDetectionMode = swingDetectionMode;
       m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
       
       // Initialiser les variables
@@ -174,7 +177,7 @@ public:
       m_trade.SetAsyncMode(false);
       
       // Initialiser l'analyseur de swing
-      m_swingAnalyzer = ForexSwingAnalyzer(symbol, timeframe, magicNumber, barsN);
+      m_swingAnalyzer = ForexSwingAnalyzer(symbol, timeframe, magicNumber, barsN, swingDetectionMode);
       
       m_customTPLevels = customTPLevels;
       

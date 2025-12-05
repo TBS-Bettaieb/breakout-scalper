@@ -29,6 +29,9 @@ private:
    // Point du symbole
    double            m_point;               // Point du symbole
    
+   // Mode de détection
+   ENUM_SWING_DETECTION_MODE m_detectionMode; // Mode de détection (WICK ou BODY)
+   
 public:
    //+------------------------------------------------------------------+
    //| Default Constructor                                              |
@@ -40,6 +43,7 @@ public:
       m_magicNumber = 0;
       m_barsN = 5;
       m_point = 0.00001;
+      m_detectionMode = SWING_DETECTION_WICK;
       
       // Initialiser les arrays de points
       ArrayInitialize(m_lastHighPoints, 0);
@@ -51,13 +55,14 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor with parameters                                      |
    //+------------------------------------------------------------------+
-   ForexSwingAnalyzer(string symbol, ENUM_TIMEFRAMES timeframe, int magicNumber, int barsN)
+   ForexSwingAnalyzer(string symbol, ENUM_TIMEFRAMES timeframe, int magicNumber, int barsN, ENUM_SWING_DETECTION_MODE detectionMode = SWING_DETECTION_WICK)
    {
       m_symbol = symbol;
       m_timeframe = timeframe;
       m_magicNumber = magicNumber;
       m_barsN = barsN;
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+      m_detectionMode = detectionMode;
       
       // Initialiser les arrays de points
       ArrayInitialize(m_lastHighPoints, 0);
@@ -65,7 +70,7 @@ public:
       ArrayInitialize(m_lastHighTimes, 0);
       ArrayInitialize(m_lastLowTimes, 0);
       
-      Logger::Success("✓ ForexSwingAnalyzer initialized for " + symbol);
+      Logger::Success("✓ ForexSwingAnalyzer initialized for " + symbol + " (Mode: " + EnumToString(detectionMode) + ")");
    }
    
    //+------------------------------------------------------------------+
@@ -369,17 +374,33 @@ private:
       
       for(int i = 0; i < 200; i++)
       {
+         // TOUJOURS détecter la barre avec le mode WICK (iHighest sur MODE_HIGH)
          double high = iHigh(m_symbol, timeframe, i);
          
          if(i > m_barsN && iHighest(m_symbol, timeframe, MODE_HIGH, m_barsN*2+1, i-m_barsN) == i)
          {
             if(high > highestHigh)
             {
+               // Barre détectée : selon le mode, retourner high ou max(open, close)
+               double result;
+               if(m_detectionMode == SWING_DETECTION_BODY)
+               {
+                  // Mode body : retourner max(open, close) de la barre détectée
+                  double open = iOpen(m_symbol, timeframe, i);
+                  double close = iClose(m_symbol, timeframe, i);
+                  result = MathMax(open, close);
+               }
+               else
+               {
+                  // Mode meche : retourner high de la barre détectée
+                  result = high;
+               }
+               
                // Stocker le point détecté
                datetime barTime = iTime(m_symbol, timeframe, i);
-               AddHighPoint(high, barTime);
+               AddHighPoint(result, barTime);
                
-               return high;
+               return result;
             }
          }
          
@@ -398,17 +419,33 @@ private:
       
       for(int i = 0; i < 200; i++)
       {
+         // TOUJOURS détecter la barre avec le mode WICK (iLowest sur MODE_LOW)
          double low = iLow(m_symbol, timeframe, i);
          
          if(i > m_barsN && iLowest(m_symbol, timeframe, MODE_LOW, m_barsN*2+1, i-m_barsN) == i)
          {
             if(low < lowestLow)
             {
+               // Barre détectée : selon le mode, retourner low ou min(open, close)
+               double result;
+               if(m_detectionMode == SWING_DETECTION_BODY)
+               {
+                  // Mode body : retourner min(open, close) de la barre détectée
+                  double open = iOpen(m_symbol, timeframe, i);
+                  double close = iClose(m_symbol, timeframe, i);
+                  result = MathMin(open, close);
+               }
+               else
+               {
+                  // Mode meche : retourner low de la barre détectée
+                  result = low;
+               }
+               
                // Stocker le point détecté
                datetime barTime = iTime(m_symbol, timeframe, i);
-               AddLowPoint(low, barTime);
+               AddLowPoint(result, barTime);
                
-               return low;
+               return result;
             }
          }
          

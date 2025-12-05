@@ -47,6 +47,7 @@ input int      InpExpirationBars = 50;                      // Expiration Bars
 input int      InpOrderDistancePoints = 80;                // Order Distance (Points)
 input int      InpSlippagePoints = 10;                     // Slippage Tolerance (Points)
 input int      InpEntryOffsetPoints = 0;                   // Entry Offset for Stop Orders (Points)
+input ENUM_SWING_DETECTION_MODE InpSwingDetectionMode = SWING_DETECTION_WICK; // Swing Detection Mode
 
 input group "🎯 TRAILING TAKE PROFIT"
 input bool     InpUseTrailingTP = true;                     // Use Trailing TP
@@ -160,6 +161,7 @@ int OnInit()
    config.orderDistPoints = InpOrderDistancePoints;
    config.slippagePoints = InpSlippagePoints;
    config.entryOffsetPoints = InpEntryOffsetPoints;
+   config.swingDetectionMode = InpSwingDetectionMode;
    config.useTrailingTP = InpUseTrailingTP;
    config.trailingTPMode = InpTrailingTPMode;
    config.customTPLevels = InpCustomTPLevels;
