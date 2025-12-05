@@ -44,3 +44,12 @@ enum ENUM_SEPARATOR {
    COMMA=0,            // Comma (,)
    SEMICOLON=1         // Semicolon (;)
 };
+
+//+------------------------------------------------------------------+
+//| Swing Detection Mode                                             |
+//+------------------------------------------------------------------+
+enum ENUM_SWING_DETECTION_MODE
+{
+   SWING_DETECTION_WICK,   // Mode mèche (utilise high/low des mèches)
+   SWING_DETECTION_BODY    // Mode body (utilise max/min de open/close)
+};

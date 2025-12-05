@@ -41,6 +41,7 @@ struct BotConfig
    int               slippagePoints;        // NEW: Slippage tolerance in points
    int               entryOffsetPoints;     // NEW: Entry price offset for Stop orders
    double            priceTolerancePercent; // NEW: Price tolerance percentage for FVG checks
+   ENUM_SWING_DETECTION_MODE swingDetectionMode; // Mode de détection swing (WICK ou BODY)
    bool              useTrailingTP;
    ENUM_TRAILING_TP_MODE trailingTPMode;
    string            customTPLevels;

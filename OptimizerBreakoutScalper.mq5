@@ -59,6 +59,7 @@ input int      InpExpirationBars = -1;      // Expiration Bars (-1 = use config 
 input int      InpOrderDistancePoints = -1; // Order Distance Points (-1 = use config default)
 input int      InpSlippagePoints = -1;      // Slippage Tolerance Points (-1 = use config default)
 input int      InpEntryOffsetPoints = -1;  // Entry Offset Points (-1 = use config default)
+input int      InpSwingDetectionMode = -1;  // Swing Detection Mode (-1=config, 0=WICK, 1=BODY)
 
 input group "🎯 TRAILING TAKE PROFIT"
 input int      InpUseTrailingTP = -1;       // Use Trailing TP (-1=config, 0=false, 1=true)
@@ -145,6 +146,18 @@ ENUM_SEPARATOR IntToSeparator(int value, ENUM_SEPARATOR configValue)
       return configValue;  // Use config default
    if(value >= 0 && value <= 1)
       return (ENUM_SEPARATOR)value;  // 0=COMMA, 1=SEMICOLON
+   return configValue;  // Invalid value, use config
+}
+
+//+------------------------------------------------------------------+
+//| Helper function to convert int to SwingDetectionMode with -1 = use config |
+//+------------------------------------------------------------------+
+ENUM_SWING_DETECTION_MODE IntToSwingDetectionMode(int value, ENUM_SWING_DETECTION_MODE configValue)
+{
+   if(value == -1)
+      return configValue;  // Use config default
+   if(value >= 0 && value <= 1)
+      return (ENUM_SWING_DETECTION_MODE)value;  // 0=WICK, 1=BODY
    return configValue;  // Invalid value, use config
 }
 
@@ -276,6 +289,7 @@ int OnInit()
       config.slippagePoints = InpSlippagePoints;
    if(InpEntryOffsetPoints >= 0)
       config.entryOffsetPoints = InpEntryOffsetPoints;
+   config.swingDetectionMode = IntToSwingDetectionMode(InpSwingDetectionMode, config.swingDetectionMode);
    
    // Trailing Take Profit
    config.useTrailingTP = IntToBoolWithConfig(InpUseTrailingTP, config.useTrailingTP);

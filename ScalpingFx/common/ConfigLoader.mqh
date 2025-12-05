@@ -28,6 +28,7 @@ public:
       m_symbolCount = 0;
       m_config.priceTolerancePercent = 0.01;
       m_config.baseBalance = 0.0;  // 🆕 Default: use account balance
+      m_config.swingDetectionMode = SWING_DETECTION_WICK;  // Default: mode meche
    }
    
    // Virtual methods to be overridden by each group
@@ -145,13 +146,15 @@ protected:
    
    // Setup strategy-specific parameters
    void SetupStrategyParams(int barsN, int expirationBars, int orderDistPoints, 
-                           int slippagePoints = 10, int entryOffsetPoints = 0)
+                           int slippagePoints = 10, int entryOffsetPoints = 0,
+                           ENUM_SWING_DETECTION_MODE swingDetectionMode = SWING_DETECTION_WICK)
    {
       m_config.barsN = barsN;
       m_config.expirationBars = expirationBars;
       m_config.orderDistPoints = orderDistPoints;
       m_config.slippagePoints = slippagePoints;
       m_config.entryOffsetPoints = entryOffsetPoints;
+      m_config.swingDetectionMode = swingDetectionMode;
    }
    
    // Setup risk multiplier (nouveau format unifié)
@@ -216,7 +219,7 @@ public:
       SetupRiskParams(1.0, 280, 260);
       SetupDynamicTrailingStop(15, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("09:25-18:25");
-      SetupStrategyParams(7, 70, 60,10,30);
+      SetupStrategyParams(7, 70, 60,10,30,SWING_DETECTION_BODY);
       SetupRiskMultiplier(true, "13:00-17:00", 1.5 , "London-NY Overlap");
       SetupNewsFilter(true);
       SetupFvgFilter(true);
@@ -242,7 +245,7 @@ public:
       SetupRiskParams(1.0, 260, 180);
       SetupDynamicTrailingStop(30, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("07:00-21:00");
-      SetupStrategyParams(4, 30,100,10,40);
+      SetupStrategyParams(4, 30,100,10,40,SWING_DETECTION_WICK);
       SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true,"USD,GBP","");
       SetupFvgFilter(true);
@@ -268,7 +271,7 @@ public:
       SetupRiskParams(0.3, 2800, 2100);
       SetupDynamicTrailingStop(200, 120, 1.0, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("09:15-18:25");
-      SetupStrategyParams(4, 30, 60,20,30);
+      SetupStrategyParams(4, 30, 60,20,30,SWING_DETECTION_WICK);
       SetupRiskMultiplier(true, "09:15-10:00", 2, "Euro Session");
       SetupNewsFilter(true);
       SetupFvgFilter(true);
@@ -294,7 +297,7 @@ public:
       SetupRiskParams(1.0, 390,220);
       SetupDynamicTrailingStop(10, 5,1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("13:00-18:00");
-      SetupStrategyParams(4, 80,130,10,90);
+      SetupStrategyParams(4, 80,130,10,90,SWING_DETECTION_WICK);
       SetupRiskMultiplier(true, "14:00-15:30", 2.0, "London-NY Overlap");
       SetupNewsFilter(true,"USD,JPY");
       SetupFvgFilter(true,0.02);
@@ -320,7 +323,7 @@ public:
       SetupRiskParams(0.5, 5000, 5000);
       SetupDynamicTrailingStop(200, 150, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("13:00-21:00");
-      SetupStrategyParams(6, 60, 120,50,20);
+      SetupStrategyParams(6, 60, 120,50,20,SWING_DETECTION_BODY);
       SetupRiskMultiplier(true, "14:30-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupFvgFilter(true,0.03);
@@ -346,7 +349,7 @@ public:
       SetupRiskParams(0.5, 7000, 5500);
       SetupDynamicTrailingStop(500, 550, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("08:00-21:00");
-      SetupStrategyParams(5, 50, 440,50,200);
+      SetupStrategyParams(5, 50, 440,50,200,SWING_DETECTION_BODY);
       SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupFvgFilter(true,0.03);
@@ -372,7 +375,7 @@ public:
       SetupRiskParams(0.5, 2800, 2300);
       SetupDynamicTrailingStop(40, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("08:10-17:25");
-      SetupStrategyParams(6, 70, 80,30,60);
+      SetupStrategyParams(6, 70, 80,30,60,SWING_DETECTION_BODY);
       SetupRiskMultiplier(true, "14:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupFvgFilter(true,0.03);
@@ -398,7 +401,7 @@ public:
       SetupRiskParams(0.25, 1600,1400);
       SetupDynamicTrailingStop(80, 50, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours("07:00-20:00");
-      SetupStrategyParams(6, 60, 90,30,40);
+      SetupStrategyParams(6, 60, 90,30,40,SWING_DETECTION_WICK);
       SetupRiskMultiplier(true, "13:15-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupFvgFilter(true,0.03);
